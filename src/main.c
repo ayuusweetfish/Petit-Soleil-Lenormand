@@ -211,15 +211,13 @@ int main()
 
   HAL_ADCEx_Calibration_Start(&adc1);
 
-  while (1) {
-    HAL_ADC_Start(&adc1);
-    HAL_ADC_PollForConversion(&adc1, 1000);
-    uint32_t adc_value = HAL_ADC_GetValue(&adc1);
-    HAL_ADC_Stop(&adc1);
-    swv_printf("ADC ref = %lu\n", *VREFINT_CAL_ADDR);
-    swv_printf("ADC = %lu\n", adc_value);
-    // ref = 1667, read = 1550 -> VDD = 1667/1550 * 3 V = 3.226 V
-  }
+  HAL_ADC_Start(&adc1);
+  HAL_ADC_PollForConversion(&adc1, 1000);
+  uint32_t adc_value = HAL_ADC_GetValue(&adc1);
+  HAL_ADC_Stop(&adc1);
+  swv_printf("ADC ref = %lu\n", *VREFINT_CAL_ADDR);
+  swv_printf("ADC = %lu\n", adc_value);
+  // ref = 1667, read = 1550 -> VDD = 1667/1550 * 3 V = 3.226 V
 
   // ======== SPI ========
   // GPIO ports
@@ -322,13 +320,16 @@ int main()
   epd_cmd(0x10, 0x03);
 */
 
-  while (true) {
+  for (int i = 0; i < 10; i++) {
     swv_printf("blink!\n");
     HAL_GPIO_WritePin(GPIOA, PIN_LED_ACT, GPIO_PIN_RESET);
     HAL_Delay(200);
     HAL_GPIO_WritePin(GPIOA, PIN_LED_ACT, GPIO_PIN_SET);
     HAL_Delay(200);
   }
+  HAL_GPIO_WritePin(GPIOA, PIN_LED_ACT, GPIO_PIN_RESET);
+  HAL_Delay(1000);
+  HAL_GPIO_WritePin(GPIOA, PIN_PWR_LATCH, GPIO_PIN_SET);
 }
 
 void SysTick_Handler()
