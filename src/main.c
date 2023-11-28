@@ -173,9 +173,9 @@ int main()
     RCC_CLOCKTYPE_SYSCLK |
     RCC_CLOCKTYPE_HCLK |
     RCC_CLOCKTYPE_PCLK1;
-  clk_init.SYSCLKSource = RCC_SYSCLKSOURCE_HSI;
-  clk_init.AHBCLKDivider = RCC_SYSCLK_DIV1;
-  clk_init.APB1CLKDivider = RCC_HCLK_DIV1;
+  clk_init.SYSCLKSource = RCC_SYSCLKSOURCE_HSI; // 16 MHz
+  clk_init.AHBCLKDivider = RCC_SYSCLK_DIV16;    // 1 MHz
+  clk_init.APB1CLKDivider = RCC_HCLK_DIV1;      // 1 MHz
   HAL_RCC_ClockConfig(&clk_init, FLASH_LATENCY_2);
 
   HAL_NVIC_SetPriority(SysTick_IRQn, 0, 0);
@@ -219,6 +219,9 @@ int main()
   swv_printf("ADC = %lu\n", adc_value);
   // ref = 1667, read = 1550 -> VDD = 1667/1550 * 3 V = 3.226 V
 
+  HAL_GPIO_WritePin(GPIOA, PIN_LED_ACT, GPIO_PIN_RESET); HAL_Delay(80);
+  HAL_GPIO_WritePin(GPIOA, PIN_LED_ACT, GPIO_PIN_SET);   HAL_Delay(80);
+
   // ======== SPI ========
   // GPIO ports
   // SPI1_SCK (PA5), SPI1_MOSI (PA7)
@@ -253,11 +256,10 @@ int main()
   spi1.Init.TIMode = SPI_TIMODE_DISABLE;
   spi1.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
   spi1.Init.DataSize = SPI_DATASIZE_8BIT;
-  spi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_2;
+  spi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_2;  // APB / 2 = 500 kHz
   HAL_SPI_Init(&spi1);
   __HAL_SPI_ENABLE(&spi1);
 
-/*
   // ======== Drive display ========
   static uint8_t pixels[200 * 200 / 8];
 
@@ -318,7 +320,6 @@ int main()
   epd_waitbusy();
   // Deep sleep
   epd_cmd(0x10, 0x03);
-*/
 
   for (int i = 0; i < 10; i++) {
     swv_printf("blink!\n");
