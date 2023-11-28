@@ -44,6 +44,7 @@ static void swv_printf(const char *restrict fmt, ...)
 }
 
 SPI_HandleTypeDef spi1 = { 0 };
+ADC_HandleTypeDef adc1 = { 0 };
 
 #pragma GCC optimize("O3")
 static inline void spi_transmit(uint8_t *data, size_t size)
@@ -179,6 +180,47 @@ int main()
 
   HAL_NVIC_SetPriority(SysTick_IRQn, 0, 0);
 
+  // ======== ADC ========
+  gpio_init.Pin = GPIO_PIN_0;
+  gpio_init.Mode = GPIO_MODE_ANALOG;
+  gpio_init.Pull = GPIO_NOPULL;
+  gpio_init.Speed = GPIO_SPEED_FREQ_HIGH;
+  HAL_GPIO_Init(GPIOA, &gpio_init);
+
+  __HAL_RCC_ADC_CLK_ENABLE();
+  adc1.Instance = ADC1;
+  adc1.Init.ClockPrescaler = ADC_CLOCK_ASYNC_DIV1;
+  adc1.Init.Resolution = ADC_RESOLUTION_12B;
+  adc1.Init.DataAlign = ADC_DATAALIGN_RIGHT;
+  adc1.Init.ScanConvMode = ADC_SCAN_DISABLE;
+  adc1.Init.EOCSelection = ADC_EOC_SINGLE_CONV;
+  adc1.Init.LowPowerAutoWait = DISABLE;
+  adc1.Init.LowPowerAutoPowerOff = ENABLE;
+  adc1.Init.ContinuousConvMode = DISABLE;
+  adc1.Init.NbrOfConversion = 1;
+  adc1.Init.DiscontinuousConvMode = DISABLE;
+  adc1.Init.ExternalTrigConv = ADC_SOFTWARE_START;
+  adc1.Init.TriggerFrequencyMode = ADC_TRIGGER_FREQ_LOW;
+  HAL_ADC_Init(&adc1);
+
+  ADC_ChannelConfTypeDef adc_ch13;
+  adc_ch13.Channel = ADC_CHANNEL_VREFINT;
+  adc_ch13.Rank = ADC_REGULAR_RANK_1;
+  adc_ch13.SamplingTime = ADC_SAMPLETIME_79CYCLES_5; // Stablize
+  HAL_ADC_ConfigChannel(&adc1, &adc_ch13);
+
+  HAL_ADCEx_Calibration_Start(&adc1);
+
+  while (1) {
+    HAL_ADC_Start(&adc1);
+    HAL_ADC_PollForConversion(&adc1, 1000);
+    uint32_t adc_value = HAL_ADC_GetValue(&adc1);
+    HAL_ADC_Stop(&adc1);
+    swv_printf("ADC ref = %lu\n", *VREFINT_CAL_ADDR);
+    swv_printf("ADC = %lu\n", adc_value);
+    // ref = 1667, read = 1550 -> VDD = 1667/1550 * 3 V = 3.226 V
+  }
+
   // ======== SPI ========
   // GPIO ports
   // SPI1_SCK (PA5), SPI1_MOSI (PA7)
@@ -217,6 +259,7 @@ int main()
   HAL_SPI_Init(&spi1);
   __HAL_SPI_ENABLE(&spi1);
 
+/*
   // ======== Drive display ========
   static uint8_t pixels[200 * 200 / 8];
 
@@ -277,6 +320,7 @@ int main()
   epd_waitbusy();
   // Deep sleep
   epd_cmd(0x10, 0x03);
+*/
 
   while (true) {
     swv_printf("blink!\n");
