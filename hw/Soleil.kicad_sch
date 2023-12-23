@@ -1674,7 +1674,6 @@
   (no_connect (at 190.5 41.91) (uuid b60cf22a-94f1-443d-ba91-ade844bc3d95))
   (no_connect (at 190.5 54.61) (uuid c153dc3a-cbb4-42b1-86b2-a6727051f358))
   (no_connect (at 190.5 52.07) (uuid d090fbc8-7eb2-49ee-b42c-399e22437402))
-  (no_connect (at 231.14 41.91) (uuid d750880b-28c6-4746-b409-6b5fb296bf37))
   (no_connect (at 190.5 49.53) (uuid fa2675c8-2506-4f42-afc2-c199e6f2ebe7))
 
   (wire (pts (xy 2.54 81.28) (xy 15.24 81.28))
@@ -1792,6 +1791,10 @@
   (wire (pts (xy 53.975 78.74) (xy 53.975 81.28))
     (stroke (width 0) (type default))
     (uuid 2c5917d0-7efe-4e78-90c2-2c0ef0449a75)
+  )
+  (wire (pts (xy 231.14 41.91) (xy 248.285 41.91))
+    (stroke (width 0) (type default))
+    (uuid 2d231fe8-4fcb-41c5-a9e8-293c03730d56)
   )
   (wire (pts (xy 85.09 114.935) (xy 95.885 114.935))
     (stroke (width 0) (type default))
@@ -3364,6 +3367,31 @@
       (project "Soleil"
         (path "/218ebbfa-f714-4191-a352-4c256789be77"
           (reference "#PWR030") (unit 1)
+        )
+      )
+    )
+  )
+
+  (symbol (lib_id "Soleil_symbols:VREF") (at 248.285 41.91 0) (unit 1)
+    (in_bom yes) (on_board yes) (dnp no)
+    (uuid 6f6d6526-54c5-4d72-adee-cef7d227b54a)
+    (property "Reference" "#PWR036" (at 248.285 45.72 0)
+      (effects (font (size 1.27 1.27)) hide)
+    )
+    (property "Value" "VREF" (at 248.285 38.1 0)
+      (effects (font (size 1.27 1.27)))
+    )
+    (property "Footprint" "" (at 248.285 41.91 0)
+      (effects (font (size 1.27 1.27)) hide)
+    )
+    (property "Datasheet" "" (at 248.285 41.91 0)
+      (effects (font (size 1.27 1.27)) hide)
+    )
+    (pin "1" (uuid b292ef64-0368-4f2b-90bd-4f200969ffa6))
+    (instances
+      (project "Soleil"
+        (path "/218ebbfa-f714-4191-a352-4c256789be77"
+          (reference "#PWR036") (unit 1)
         )
       )
     )
