@@ -4,7 +4,7 @@
 #include <stdint.h>
 #include <stdio.h>
 
-#define PIN_LED_ACT   GPIO_PIN_1
+#define PIN_LED_R     GPIO_PIN_7
 #define PIN_PWR_LATCH GPIO_PIN_3
 #define PIN_EP_NCS    GPIO_PIN_4
 #define PIN_EP_DCC    GPIO_PIN_6
@@ -138,6 +138,7 @@ int main()
 
   // ======== GPIO ========
   __HAL_RCC_GPIOA_CLK_ENABLE();
+  __HAL_RCC_GPIOB_CLK_ENABLE();
   GPIO_InitTypeDef gpio_init;
 
   gpio_init.Pin = PIN_PWR_LATCH;
@@ -147,11 +148,11 @@ int main()
   HAL_GPIO_Init(GPIOA, &gpio_init);
   HAL_GPIO_WritePin(GPIOA, PIN_PWR_LATCH, GPIO_PIN_RESET);
 
-  gpio_init.Pin = PIN_LED_ACT;
+  gpio_init.Pin = PIN_LED_R;
   gpio_init.Mode = GPIO_MODE_OUTPUT_PP;
   gpio_init.Pull = GPIO_PULLUP;
-  HAL_GPIO_Init(GPIOA, &gpio_init);
-  HAL_GPIO_WritePin(GPIOA, PIN_LED_ACT, GPIO_PIN_RESET);
+  HAL_GPIO_Init(GPIOB, &gpio_init);
+  HAL_GPIO_WritePin(GPIOB, PIN_LED_R, GPIO_PIN_RESET);
 
   // SWD (PA13, PA14)
   gpio_init.Pin = GPIO_PIN_13 | GPIO_PIN_14;
@@ -219,8 +220,8 @@ int main()
   swv_printf("ADC = %lu\n", adc_value);
   // ref = 1667, read = 1550 -> VDD = 1667/1550 * 3 V = 3.226 V
 
-  HAL_GPIO_WritePin(GPIOA, PIN_LED_ACT, GPIO_PIN_RESET); HAL_Delay(80);
-  HAL_GPIO_WritePin(GPIOA, PIN_LED_ACT, GPIO_PIN_SET);   HAL_Delay(80);
+  HAL_GPIO_WritePin(GPIOB, PIN_LED_R, GPIO_PIN_RESET); HAL_Delay(80);
+  HAL_GPIO_WritePin(GPIOB, PIN_LED_R, GPIO_PIN_SET);   HAL_Delay(80);
 
   // ======== SPI ========
   // GPIO ports
@@ -260,6 +261,7 @@ int main()
   HAL_SPI_Init(&spi1);
   __HAL_SPI_ENABLE(&spi1);
 
+if (0) {
   // ======== Drive display ========
   static uint8_t pixels[200 * 200 / 8];
 
@@ -284,9 +286,9 @@ int main()
   // epd_cmd(0x10, 0x03);
 
   for (int i = 0; i < 5; i++) {
-    HAL_GPIO_WritePin(GPIOA, PIN_LED_ACT, GPIO_PIN_RESET);
+    HAL_GPIO_WritePin(GPIOB, PIN_LED_R, GPIO_PIN_RESET);
     HAL_Delay(100);
-    HAL_GPIO_WritePin(GPIOA, PIN_LED_ACT, GPIO_PIN_SET);
+    HAL_GPIO_WritePin(GPIOB, PIN_LED_R, GPIO_PIN_SET);
     HAL_Delay(100);
   }
 
@@ -320,15 +322,16 @@ int main()
   epd_waitbusy();
   // Deep sleep
   epd_cmd(0x10, 0x03);
+}
 
   for (int i = 0; i < 10; i++) {
     swv_printf("blink!\n");
-    HAL_GPIO_WritePin(GPIOA, PIN_LED_ACT, GPIO_PIN_RESET);
+    HAL_GPIO_WritePin(GPIOB, PIN_LED_R, GPIO_PIN_SET);
     HAL_Delay(200);
-    HAL_GPIO_WritePin(GPIOA, PIN_LED_ACT, GPIO_PIN_SET);
+    HAL_GPIO_WritePin(GPIOB, PIN_LED_R, GPIO_PIN_RESET);
     HAL_Delay(200);
   }
-  HAL_GPIO_WritePin(GPIOA, PIN_LED_ACT, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOB, PIN_LED_R, GPIO_PIN_SET);
   HAL_Delay(1000);
   HAL_GPIO_WritePin(GPIOA, PIN_PWR_LATCH, GPIO_PIN_SET);
 }
