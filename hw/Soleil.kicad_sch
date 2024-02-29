@@ -2316,7 +2316,7 @@
       (effects (font (size 1.27 1.27)) (justify left) hide)
     )
   )
-  (global_label "LED_R" (shape bidirectional) (at 190.5 54.61 180) (fields_autoplaced)
+  (global_label "LED_G" (shape bidirectional) (at 190.5 54.61 180) (fields_autoplaced)
     (effects (font (size 1.27 1.27)) (justify right))
     (uuid 1be84335-3fa4-4ce3-b30f-d5ca97741d57)
     (property "Intersheetrefs" "${INTERSHEET_REFS}" (at 180.7188 54.61 0)
@@ -2470,7 +2470,7 @@
       (effects (font (size 1.27 1.27)) (justify right) hide)
     )
   )
-  (global_label "LED_G" (shape bidirectional) (at 190.5 52.07 180) (fields_autoplaced)
+  (global_label "LED_R" (shape bidirectional) (at 190.5 52.07 180) (fields_autoplaced)
     (effects (font (size 1.27 1.27)) (justify right))
     (uuid e6dc1bc4-a937-4c8a-b5c7-1d1aac0d3a59)
     (property "Intersheetrefs" "${INTERSHEET_REFS}" (at 180.7188 52.07 0)
@@ -3044,6 +3044,31 @@
       (project "Soleil"
         (path "/218ebbfa-f714-4191-a352-4c256789be77"
           (reference "C13") (unit 1)
+        )
+      )
+    )
+  )
+
+  (symbol (lib_id "power:VDD") (at 120.015 30.48 0) (unit 1)
+    (in_bom yes) (on_board yes) (dnp no) (fields_autoplaced)
+    (uuid 3eb80c31-a1cd-4008-9371-e866ffe33a0b)
+    (property "Reference" "#PWR011" (at 120.015 34.29 0)
+      (effects (font (size 1.27 1.27)) hide)
+    )
+    (property "Value" "VDD" (at 120.015 26.035 0)
+      (effects (font (size 1.27 1.27)))
+    )
+    (property "Footprint" "" (at 120.015 30.48 0)
+      (effects (font (size 1.27 1.27)) hide)
+    )
+    (property "Datasheet" "" (at 120.015 30.48 0)
+      (effects (font (size 1.27 1.27)) hide)
+    )
+    (pin "1" (uuid c6f0878c-8971-46dd-b220-a74152c143ef))
+    (instances
+      (project "Soleil"
+        (path "/218ebbfa-f714-4191-a352-4c256789be77"
+          (reference "#PWR011") (unit 1)
         )
       )
     )
@@ -4306,31 +4331,6 @@
       (project "Soleil"
         (path "/218ebbfa-f714-4191-a352-4c256789be77"
           (reference "#PWR032") (unit 1)
-        )
-      )
-    )
-  )
-
-  (symbol (lib_id "Soleil_symbols:VCAP") (at 120.015 30.48 0) (unit 1)
-    (in_bom yes) (on_board yes) (dnp no) (fields_autoplaced)
-    (uuid e361f5c0-07ff-4c24-b59a-53e7463b1ade)
-    (property "Reference" "#PWR011" (at 120.015 34.29 0)
-      (effects (font (size 1.27 1.27)) hide)
-    )
-    (property "Value" "VCAP" (at 120.015 25.4 0)
-      (effects (font (size 1.27 1.27)))
-    )
-    (property "Footprint" "" (at 120.015 30.48 0)
-      (effects (font (size 1.27 1.27)) hide)
-    )
-    (property "Datasheet" "" (at 120.015 30.48 0)
-      (effects (font (size 1.27 1.27)) hide)
-    )
-    (pin "1" (uuid 872df3cb-daf0-4f1c-b741-f75f3c06ae12))
-    (instances
-      (project "Soleil"
-        (path "/218ebbfa-f714-4191-a352-4c256789be77"
-          (reference "#PWR011") (unit 1)
         )
       )
     )
