@@ -4,10 +4,9 @@
 #include <stdint.h>
 #include <stdio.h>
 
-#define PIN_LED_R     GPIO_PIN_7
-#define PIN_LED_G     GPIO_PIN_6
+#define PIN_LED_R     GPIO_PIN_6
+#define PIN_LED_G     GPIO_PIN_7
 #define PIN_LED_B     GPIO_PIN_1
-#define PIN_PWR_LATCH GPIO_PIN_3
 #define PIN_EP_NCS    GPIO_PIN_4
 #define PIN_EP_DCC    GPIO_PIN_6
 #define PIN_EP_NRST   GPIO_PIN_11
@@ -144,18 +143,11 @@ int main()
   __HAL_RCC_GPIOB_CLK_ENABLE();
   GPIO_InitTypeDef gpio_init;
 
-  gpio_init.Pin = PIN_PWR_LATCH;
-  gpio_init.Mode = GPIO_MODE_OUTPUT_OD;
-  gpio_init.Pull = GPIO_NOPULL;
-  gpio_init.Speed = GPIO_SPEED_FREQ_HIGH;
-  HAL_GPIO_Init(GPIOA, &gpio_init);
-  HAL_GPIO_WritePin(GPIOA, PIN_PWR_LATCH, GPIO_PIN_RESET);
-
-  gpio_init.Pin = PIN_LED_R;
+  gpio_init.Pin = PIN_LED_R | PIN_LED_G | PIN_LED_B;
   gpio_init.Mode = GPIO_MODE_OUTPUT_PP;
-  gpio_init.Pull = GPIO_PULLUP;
+  gpio_init.Pull = GPIO_PULLDOWN;
   HAL_GPIO_Init(GPIOB, &gpio_init);
-  HAL_GPIO_WritePin(GPIOB, PIN_LED_R, GPIO_PIN_SET);
+  HAL_GPIO_WritePin(GPIOB, PIN_LED_R | PIN_LED_G | PIN_LED_B, GPIO_PIN_RESET);
 
   // SWD (PA13, PA14)
   gpio_init.Pin = GPIO_PIN_13 | GPIO_PIN_14;
@@ -249,12 +241,12 @@ int main()
   TIM_OC_InitTypeDef tim14_ch1_oc_init = {
     .OCMode = TIM_OCMODE_PWM2,
     .Pulse = 0, // to be filled
-    .OCPolarity = TIM_OCPOLARITY_HIGH,
+    .OCPolarity = TIM_OCPOLARITY_LOW,
   };
   HAL_TIM_PWM_ConfigChannel(&tim14, &tim14_ch1_oc_init, TIM_CHANNEL_1);
   HAL_TIM_PWM_Start(&tim14, TIM_CHANNEL_1);
 
-  // LED Green, TIM16
+  // LED Red, TIM16
   gpio_init.Pin = GPIO_PIN_6;
   gpio_init.Mode = GPIO_MODE_AF_PP;
   gpio_init.Alternate = GPIO_AF2_TIM16;
@@ -276,12 +268,12 @@ int main()
   TIM_OC_InitTypeDef tim16_ch1_oc_init = {
     .OCMode = TIM_OCMODE_PWM2,
     .Pulse = 0, // to be filled
-    .OCNPolarity = TIM_OCNPOLARITY_HIGH,  // Output is TIM16_CH1N
+    .OCNPolarity = TIM_OCNPOLARITY_LOW,  // Output is TIM16_CH1N
   };
   HAL_TIM_PWM_ConfigChannel(&tim16, &tim16_ch1_oc_init, TIM_CHANNEL_1);
   HAL_TIMEx_PWMN_Start(&tim16, TIM_CHANNEL_1);
 
-  // LED Red, TIM17
+  // LED Green, TIM17
   gpio_init.Pin = GPIO_PIN_7;
   gpio_init.Mode = GPIO_MODE_AF_PP;
   gpio_init.Alternate = GPIO_AF2_TIM17;
@@ -302,8 +294,8 @@ int main()
   HAL_TIM_PWM_Init(&tim17);
   TIM_OC_InitTypeDef tim17_ch1_oc_init = {
     .OCMode = TIM_OCMODE_PWM2,
-    .Pulse = 0, // to be filled
-    .OCNPolarity = TIM_OCNPOLARITY_HIGH,  // Output is TIM17_CH1N
+    .Pulse = 1, // to be filled
+    .OCNPolarity = TIM_OCNPOLARITY_LOW,  // Output is TIM17_CH1N
   };
   HAL_TIM_PWM_ConfigChannel(&tim17, &tim17_ch1_oc_init, TIM_CHANNEL_1);
   HAL_TIMEx_PWMN_Start(&tim17, TIM_CHANNEL_1);
@@ -319,9 +311,9 @@ print(', '.join('%d' % round(8000*(1+sin(i/N*2*pi))) for i in range(N)))
   };
   while (1) {
     for (int i = 0; i < N; i++) {
-      TIM14->CCR1 = sin_lut[i] / 2;
-      TIM16->CCR1 = sin_lut[(i + N / 3) % N] / 2;
-      TIM17->CCR1 = sin_lut[(i + N * 2 / 3) % N];
+      TIM14->CCR1 = sin_lut[i] / 10;
+      TIM16->CCR1 = sin_lut[(i + N / 3) % N] / 10;
+      TIM17->CCR1 = sin_lut[(i + N * 2 / 3) % N] / 10;
       // HAL_Delay(1);
       for (int i = 0; i < 100; i++) asm volatile ("nop");
     }
@@ -439,7 +431,6 @@ if (0) {
   }
   HAL_GPIO_WritePin(GPIOB, PIN_LED_R, GPIO_PIN_SET);
   HAL_Delay(1000);
-  HAL_GPIO_WritePin(GPIOA, PIN_PWR_LATCH, GPIO_PIN_SET);
 }
 
 void SysTick_Handler()
