@@ -143,6 +143,30 @@ void sleep_delay(uint32_t ticks)
   }
 }
 
+void setup_clocks()
+{
+  RCC_OscInitTypeDef osc_init = { 0 };
+  osc_init.OscillatorType = RCC_OSCILLATORTYPE_HSI;
+  osc_init.HSIState = RCC_HSI_ON;
+  osc_init.PLL.PLLState = RCC_PLL_ON;
+  osc_init.PLL.PLLSource = RCC_PLLSOURCE_HSI;
+  osc_init.PLL.PLLM = RCC_PLLM_DIV2;
+  osc_init.PLL.PLLN = 8;
+  osc_init.PLL.PLLP = RCC_PLLP_DIV2;
+  osc_init.PLL.PLLR = RCC_PLLR_DIV2;
+  HAL_RCC_OscConfig(&osc_init);
+
+  RCC_ClkInitTypeDef clk_init = { 0 };
+  clk_init.ClockType =
+    RCC_CLOCKTYPE_SYSCLK |
+    RCC_CLOCKTYPE_HCLK |
+    RCC_CLOCKTYPE_PCLK1;
+  clk_init.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;  // 64 MHz
+  clk_init.AHBCLKDivider = RCC_SYSCLK_DIV16;    // 4 MHz
+  clk_init.APB1CLKDivider = RCC_HCLK_DIV1;      // 4 MHz
+  HAL_RCC_ClockConfig(&clk_init, FLASH_LATENCY_2);
+}
+
 int main()
 {
   HAL_Init();
@@ -167,27 +191,7 @@ int main()
   HAL_GPIO_Init(GPIOA, &gpio_init);
 
   // Clocks
-  RCC_OscInitTypeDef osc_init = { 0 };
-  osc_init.OscillatorType = RCC_OSCILLATORTYPE_HSI;
-  osc_init.HSIState = RCC_HSI_ON;
-  osc_init.PLL.PLLState = RCC_PLL_ON;
-  osc_init.PLL.PLLSource = RCC_PLLSOURCE_HSI;
-  osc_init.PLL.PLLM = RCC_PLLM_DIV2;
-  osc_init.PLL.PLLN = 8;
-  osc_init.PLL.PLLP = RCC_PLLP_DIV2;
-  osc_init.PLL.PLLR = RCC_PLLR_DIV2;
-  HAL_RCC_OscConfig(&osc_init);
-
-  RCC_ClkInitTypeDef clk_init = { 0 };
-  clk_init.ClockType =
-    RCC_CLOCKTYPE_SYSCLK |
-    RCC_CLOCKTYPE_HCLK |
-    RCC_CLOCKTYPE_PCLK1;
-  clk_init.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;  // 64 MHz
-  clk_init.AHBCLKDivider = RCC_SYSCLK_DIV16;    // 4 MHz
-  clk_init.APB1CLKDivider = RCC_HCLK_DIV1;      // 4 MHz
-  HAL_RCC_ClockConfig(&clk_init, FLASH_LATENCY_2);
-
+  setup_clocks();
   HAL_NVIC_SetPriority(SysTick_IRQn, 0, 0);
 
   // ======== Button ========
@@ -223,15 +227,17 @@ int main()
   HAL_NVIC_SetPriority(EXTI2_3_IRQn, 1, 0);
   HAL_NVIC_EnableIRQ(EXTI2_3_IRQn);
 
+  HAL_SuspendTick();
+
   while (1) {
-    HAL_GPIO_WritePin(GPIOB, PIN_LED_R, 1); HAL_GPIO_WritePin(GPIOB, PIN_LED_G | PIN_LED_B, 0); HAL_Delay(500);
-    HAL_GPIO_WritePin(GPIOB, PIN_LED_G, 1); HAL_GPIO_WritePin(GPIOB, PIN_LED_B | PIN_LED_R, 0); HAL_Delay(500);
-    HAL_GPIO_WritePin(GPIOB, PIN_LED_B, 1); HAL_GPIO_WritePin(GPIOB, PIN_LED_R | PIN_LED_G, 0); HAL_Delay(500);
-    HAL_SuspendTick();
-    __HAL_PWR_CLEAR_FLAG(PWR_FLAG_WUFI);
-    __HAL_PWR_CLEAR_FLAG(PWR_FLAG_WUF);
-    HAL_PWR_EnterSLEEPMode(PWR_MAINREGULATOR_ON, PWR_SLEEPENTRY_WFI);
-    HAL_ResumeTick();
+    // HAL_PWR_EnableSleepOnExit();
+    // HAL_PWR_EnterSLEEPMode(PWR_MAINREGULATOR_ON, PWR_SLEEPENTRY_WFI);
+    HAL_PWR_EnterSTOPMode(PWR_MAINREGULATOR_ON, PWR_STOPENTRY_WFI);
+
+    HAL_GPIO_WritePin(GPIOB, PIN_LED_R, 1); HAL_GPIO_WritePin(GPIOB, PIN_LED_G | PIN_LED_B, 0); for (volatile int i = 0; i < 100000; i++) asm volatile ("nop");
+    HAL_GPIO_WritePin(GPIOB, PIN_LED_G, 1); HAL_GPIO_WritePin(GPIOB, PIN_LED_B | PIN_LED_R, 0); for (volatile int i = 0; i < 100000; i++) asm volatile ("nop");
+    HAL_GPIO_WritePin(GPIOB, PIN_LED_B, 1); HAL_GPIO_WritePin(GPIOB, PIN_LED_R | PIN_LED_G, 0); for (volatile int i = 0; i < 100000; i++) asm volatile ("nop");
+    HAL_GPIO_WritePin(GPIOB, PIN_LED_R | PIN_LED_G | PIN_LED_B, 0);
   }
 
   // ======== ADC ========
@@ -506,10 +512,12 @@ void SysTick_Handler()
 
 void EXTI2_3_IRQHandler()
 {
+  setup_clocks();
   HAL_GPIO_WritePin(GPIOB, PIN_LED_G | PIN_LED_B, 0);
-  for (int i = 0; i < 5; i++) {
-    HAL_GPIO_WritePin(GPIOB, PIN_LED_R, 1); HAL_Delay(200);
-    HAL_GPIO_WritePin(GPIOB, PIN_LED_R, 0); HAL_Delay(200);
+  if (0) for (int i = 0; i < 5; i++) {
+    HAL_GPIO_WritePin(GPIOB, PIN_LED_R, 1); for (volatile int i = 0; i < 20000; i++) asm volatile ("nop");
+    HAL_GPIO_WritePin(GPIOB, PIN_LED_R, 0); for (volatile int i = 0; i < 20000; i++) asm volatile ("nop");
   }
   __HAL_GPIO_EXTI_CLEAR_FALLING_IT(PIN_BUTTON);
+  // HAL_PWR_DisableSleepOnExit();
 }
