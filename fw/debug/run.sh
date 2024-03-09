@@ -1,4 +1,4 @@
-# ~/.platformio/packages/tool-openocd/bin/openocd -f interface/stlink.cfg -f target/stm32g0x.cfg
+# ~/.platformio/packages/tool-openocd/bin/openocd -f interface/stlink.cfg -f target/stm32g0x.cfg -c 'adapter speed 32000'
 
 cat >debug/gdbinit <<EOF
 define hook-quit
