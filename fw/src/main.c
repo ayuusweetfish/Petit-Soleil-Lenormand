@@ -197,6 +197,43 @@ int main()
   gpio_init.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOA, &gpio_init);
 
+/*
+  LL_EXTI_InitTypeDef exti_init = (LL_EXTI_InitTypeDef){
+    .Line_0_31 = LL_EXTI_LINE_3,
+    .LineCommand = DISABLE,
+    .Mode = LL_EXTI_MODE_IT,
+    .Trigger = LL_EXTI_TRIGGER_FALLING,
+  };
+  LL_EXTI_Init(&exti_init);
+*/
+  EXTI_HandleTypeDef exti_handle = {
+    // .Line = 3,
+    .RisingCallback = NULL,
+    .FallingCallback = NULL,
+  };
+  EXTI_ConfigTypeDef exti_cfg = {
+    .Line = EXTI_LINE_3,
+    .Mode = EXTI_MODE_INTERRUPT,
+    .Trigger = EXTI_TRIGGER_FALLING,
+    .GPIOSel = EXTI_GPIOA,
+  };
+  HAL_EXTI_SetConfigLine(&exti_handle, &exti_cfg);
+
+  // Interrupt
+  HAL_NVIC_SetPriority(EXTI2_3_IRQn, 1, 0);
+  HAL_NVIC_EnableIRQ(EXTI2_3_IRQn);
+
+  while (1) {
+    HAL_GPIO_WritePin(GPIOB, PIN_LED_R, 1); HAL_GPIO_WritePin(GPIOB, PIN_LED_G | PIN_LED_B, 0); HAL_Delay(500);
+    HAL_GPIO_WritePin(GPIOB, PIN_LED_G, 1); HAL_GPIO_WritePin(GPIOB, PIN_LED_B | PIN_LED_R, 0); HAL_Delay(500);
+    HAL_GPIO_WritePin(GPIOB, PIN_LED_B, 1); HAL_GPIO_WritePin(GPIOB, PIN_LED_R | PIN_LED_G, 0); HAL_Delay(500);
+    HAL_SuspendTick();
+    __HAL_PWR_CLEAR_FLAG(PWR_FLAG_WUFI);
+    __HAL_PWR_CLEAR_FLAG(PWR_FLAG_WUF);
+    HAL_PWR_EnterSLEEPMode(PWR_MAINREGULATOR_ON, PWR_SLEEPENTRY_WFI);
+    HAL_ResumeTick();
+  }
+
   // ======== ADC ========
   gpio_init.Pin = GPIO_PIN_0;
   gpio_init.Mode = GPIO_MODE_ANALOG;
@@ -332,14 +369,19 @@ print(', '.join('%d' % round(8000*(1+sin(i/N*2*pi))) for i in range(N)))
   };
   while (1) {
     TIM14->CCR1 = TIM16->CCR1 = TIM17->CCR1 = 0;
-    while (HAL_GPIO_ReadPin(GPIOA, PIN_BUTTON) == 1)
-      sleep_delay(100);
+    // while (HAL_GPIO_ReadPin(GPIOA, PIN_BUTTON) == 1)
+    //   sleep_delay(100);
     for (int i = 0; i < N * 3; i++) {
       TIM14->CCR1 = sin_lut[i % N] / 40;
       TIM16->CCR1 = sin_lut[(i + N / 3) % N] / 40;
       TIM17->CCR1 = sin_lut[(i + N * 2 / 3) % N] / 40;
       for (int i = 0; i < 100; i++) asm volatile ("nop");
     }
+    sleep_delay(1000);
+    HAL_SuspendTick();
+    // HAL_PWR_EnterSTOPMode(PWR_MAINREGULATOR_ON, PWR_STOPENTRY_WFI);
+    HAL_PWR_EnterSLEEPMode(PWR_MAINREGULATOR_ON, PWR_SLEEPENTRY_WFI);
+    // HAL_ResumeTick();
   }
 
   // ======== SPI ========
@@ -460,4 +502,14 @@ void SysTick_Handler()
 {
   HAL_IncTick();
   HAL_SYSTICK_IRQHandler();
+}
+
+void EXTI2_3_IRQHandler()
+{
+  HAL_GPIO_WritePin(GPIOB, PIN_LED_G | PIN_LED_B, 0);
+  for (int i = 0; i < 5; i++) {
+    HAL_GPIO_WritePin(GPIOB, PIN_LED_R, 1); HAL_Delay(200);
+    HAL_GPIO_WritePin(GPIOB, PIN_LED_R, 0); HAL_Delay(200);
+  }
+  __HAL_GPIO_EXTI_CLEAR_FALLING_IT(PIN_BUTTON);
 }
