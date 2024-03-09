@@ -97,9 +97,7 @@ static void decode(uint8_t *buf, const uint8_t *image, size_t size)
 {
   int n_bits = 0;
   uint8_t cur_byte = 0;
-  int sum = 0;
   for (size_t i = 0; i < size; i++) {
-    sum += image[i];
     for (int j = 0; j < image[i]; j++) {
       cur_byte = (cur_byte << 1) | (i & 1);
       if (++n_bits == 8) {
@@ -263,20 +261,19 @@ int main()
   adc_ch_temp.SamplingTime = ADC_SAMPLETIME_1CYCLE_5;
 
   for (int ch = 0; ch <= 1; ch++) {
-    char s[101];
     if (ch == 0) HAL_ADC_ConfigChannel(&adc1, &adc_ch13);
     else HAL_ADC_ConfigChannel(&adc1, &adc_ch_temp);
-    for (int line = 0; line < 5; line++) {
-      for (int i = 0; i < 100; i++) {
-        HAL_ADC_Start(&adc1);
-        HAL_ADC_PollForConversion(&adc1, 1000);
-        uint32_t adc_value = HAL_ADC_GetValue(&adc1);
-        HAL_ADC_Stop(&adc1);
-        s[i] = '0' + (adc_value & 1);
-      }
-      s[100] = '\0';
-      swv_printf("%6s: %s\n", ch == 0 ? "REFINT" : "TEMP", s);
+    swv_printf("%6s: ", ch == 0 ? "REFINT" : "TEMP");
+    uint8_t v = 0;
+    for (int i = 0; i < 400; i++) {
+      HAL_ADC_Start(&adc1);
+      HAL_ADC_PollForConversion(&adc1, 1000);
+      uint32_t adc_value = HAL_ADC_GetValue(&adc1);
+      HAL_ADC_Stop(&adc1);
+      v = (v << 1) | (adc_value & 1);
+      if (i % 8 == 0) swv_printf("%02x", v);
     }
+    swv_printf("\n");
   }
   swv_printf("30 C = %lu\n", *TEMPSENSOR_CAL1_ADDR);
   swv_printf("130 C = %lu\n", *TEMPSENSOR_CAL2_ADDR);
@@ -284,6 +281,22 @@ int main()
     *(uint32_t *)(UID_BASE + 0),
     *(uint32_t *)(UID_BASE + 4),
     *(uint32_t *)(UID_BASE + 8));
+/*
+  swv_printf("pixels: %08x %08x %08x %08x\n",
+    *(uint32_t *)(pixels +  0),
+    *(uint32_t *)(pixels +  4),
+    *(uint32_t *)(pixels +  8),
+    *(uint32_t *)(pixels + 12));
+*/
+  uint64_t mem1 = 0, mem2 = 0;
+  for (uint64_t *p = (uint64_t *)0x20000000; p < (uint64_t *)0x20002000; p++) {
+    mem1 = mem1 ^ *p;
+    mem2 = (mem2 * 17) ^ *p;
+  }
+  swv_printf("all mem: %08x %08x %08x %08x\n",
+    (uint32_t)(mem1 >> 32), (uint32_t)mem1,
+    (uint32_t)(mem2 >> 32), (uint32_t)mem2
+  );
 
   adc_ch13.Channel = ADC_CHANNEL_VREFINT;
   adc_ch13.Rank = ADC_REGULAR_RANK_1;
@@ -451,6 +464,7 @@ print(', '.join('%d' % round(8000*(1+sin(i/N*2*pi))) for i in range(N)))
 
 if (1) {
   // ======== Drive display ========
+  __attribute__ ((section (".noinit")))
   static uint8_t pixels[200 * 200 / 8];
 
   epd_reset(false);
