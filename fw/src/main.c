@@ -227,19 +227,6 @@ int main()
   HAL_NVIC_SetPriority(EXTI2_3_IRQn, 1, 0);
   HAL_NVIC_EnableIRQ(EXTI2_3_IRQn);
 
-  HAL_SuspendTick();
-
-  while (1) {
-    // HAL_PWR_EnableSleepOnExit();
-    // HAL_PWR_EnterSLEEPMode(PWR_MAINREGULATOR_ON, PWR_SLEEPENTRY_WFI);
-    HAL_PWR_EnterSTOPMode(PWR_MAINREGULATOR_ON, PWR_STOPENTRY_WFI);
-
-    HAL_GPIO_WritePin(GPIOB, PIN_LED_R, 1); HAL_GPIO_WritePin(GPIOB, PIN_LED_G | PIN_LED_B, 0); for (volatile int i = 0; i < 100000; i++) asm volatile ("nop");
-    HAL_GPIO_WritePin(GPIOB, PIN_LED_G, 1); HAL_GPIO_WritePin(GPIOB, PIN_LED_B | PIN_LED_R, 0); for (volatile int i = 0; i < 100000; i++) asm volatile ("nop");
-    HAL_GPIO_WritePin(GPIOB, PIN_LED_B, 1); HAL_GPIO_WritePin(GPIOB, PIN_LED_R | PIN_LED_G, 0); for (volatile int i = 0; i < 100000; i++) asm volatile ("nop");
-    HAL_GPIO_WritePin(GPIOB, PIN_LED_R | PIN_LED_G | PIN_LED_B, 0);
-  }
-
   // ======== ADC ========
   gpio_init.Pin = GPIO_PIN_0;
   gpio_init.Mode = GPIO_MODE_ANALOG;
@@ -375,6 +362,9 @@ print(', '.join('%d' % round(8000*(1+sin(i/N*2*pi))) for i in range(N)))
   };
   while (1) {
     TIM14->CCR1 = TIM16->CCR1 = TIM17->CCR1 = 0;
+    HAL_SuspendTick();
+    HAL_PWR_EnterSTOPMode(PWR_LOWPOWERREGULATOR_ON, PWR_STOPENTRY_WFI);
+    HAL_ResumeTick();
     // while (HAL_GPIO_ReadPin(GPIOA, PIN_BUTTON) == 1)
     //   sleep_delay(100);
     for (int i = 0; i < N * 3; i++) {
@@ -384,10 +374,6 @@ print(', '.join('%d' % round(8000*(1+sin(i/N*2*pi))) for i in range(N)))
       for (int i = 0; i < 100; i++) asm volatile ("nop");
     }
     sleep_delay(1000);
-    HAL_SuspendTick();
-    // HAL_PWR_EnterSTOPMode(PWR_MAINREGULATOR_ON, PWR_STOPENTRY_WFI);
-    HAL_PWR_EnterSLEEPMode(PWR_MAINREGULATOR_ON, PWR_SLEEPENTRY_WFI);
-    // HAL_ResumeTick();
   }
 
   // ======== SPI ========
@@ -519,5 +505,4 @@ void EXTI2_3_IRQHandler()
     HAL_GPIO_WritePin(GPIOB, PIN_LED_R, 0); for (volatile int i = 0; i < 20000; i++) asm volatile ("nop");
   }
   __HAL_GPIO_EXTI_CLEAR_FALLING_IT(PIN_BUTTON);
-  // HAL_PWR_DisableSleepOnExit();
 }
