@@ -255,6 +255,38 @@ int main()
   ADC_ChannelConfTypeDef adc_ch13;
   adc_ch13.Channel = ADC_CHANNEL_VREFINT;
   adc_ch13.Rank = ADC_REGULAR_RANK_1;
+  adc_ch13.SamplingTime = ADC_SAMPLETIME_1CYCLE_5;
+
+  ADC_ChannelConfTypeDef adc_ch_temp;
+  adc_ch_temp.Channel = ADC_CHANNEL_TEMPSENSOR;
+  adc_ch_temp.Rank = ADC_REGULAR_RANK_1;
+  adc_ch_temp.SamplingTime = ADC_SAMPLETIME_1CYCLE_5;
+
+  for (int ch = 0; ch <= 1; ch++) {
+    char s[101];
+    if (ch == 0) HAL_ADC_ConfigChannel(&adc1, &adc_ch13);
+    else HAL_ADC_ConfigChannel(&adc1, &adc_ch_temp);
+    for (int line = 0; line < 5; line++) {
+      for (int i = 0; i < 100; i++) {
+        HAL_ADC_Start(&adc1);
+        HAL_ADC_PollForConversion(&adc1, 1000);
+        uint32_t adc_value = HAL_ADC_GetValue(&adc1);
+        HAL_ADC_Stop(&adc1);
+        s[i] = '0' + (adc_value & 1);
+      }
+      s[100] = '\0';
+      swv_printf("%6s: %s\n", ch == 0 ? "REFINT" : "TEMP", s);
+    }
+  }
+  swv_printf("30 C = %lu\n", *TEMPSENSOR_CAL1_ADDR);
+  swv_printf("130 C = %lu\n", *TEMPSENSOR_CAL2_ADDR);
+  swv_printf("UID = %08x %08x %08x\n",
+    *(uint32_t *)(UID_BASE + 0),
+    *(uint32_t *)(UID_BASE + 4),
+    *(uint32_t *)(UID_BASE + 8));
+
+  adc_ch13.Channel = ADC_CHANNEL_VREFINT;
+  adc_ch13.Rank = ADC_REGULAR_RANK_1;
   adc_ch13.SamplingTime = ADC_SAMPLETIME_79CYCLES_5; // Stablize
   HAL_ADC_ConfigChannel(&adc1, &adc_ch13);
 
