@@ -298,6 +298,49 @@ int main()
     (uint32_t)(mem2 >> 32), (uint32_t)mem2
   );
 
+  // LSI-HSI ratio
+  __HAL_RCC_TIM16_CLK_ENABLE();
+  tim16 = (TIM_HandleTypeDef){
+    .Instance = TIM16,
+    .Init = {
+      .Prescaler = 3 - 1,
+      .CounterMode = TIM_COUNTERMODE_UP,
+      .Period = 65536 - 1,
+      .ClockDivision = TIM_CLOCKDIVISION_DIV1,
+      .RepetitionCounter = 0,
+    },
+  };
+  HAL_TIM_Base_Init(&tim16);
+  TIM_ClockConfigTypeDef tim16_cfg_ti1 = {
+    .ClockSource = TIM_CLOCKSOURCE_TI1,
+    .ClockPolarity = TIM_CLOCKPOLARITY_RISING,
+    .ClockPrescaler = TIM_CLOCKPRESCALER_DIV1,
+    .ClockFilter = 0,
+  };
+  HAL_TIM_ConfigClockSource(&tim16, &tim16_cfg_ti1);
+  HAL_TIMEx_TISelection(&tim16, TIM_TIM16_TI1_LSI, TIM_CHANNEL_1);
+  HAL_TIM_Base_Start(&tim16);
+
+  uint32_t s[50];
+  for (int i = 0; i < 50; i++) {
+    uint32_t last = (i == 0 ? 0 : s[i - 1]);
+    int ops = 1000 + (((last >> 8) ^ last ^ (last << 4)) & 0x1ff);
+    for (int j = 0; j < ops; j++) asm volatile ("nop");
+    s[i] = TIM16->CNT;
+  }
+  for (int i = 40; i < 50; i++)
+    swv_printf("%5u|%5u%c", s[i], (s[i] - (i == 0 ? 0 : s[i - 1])) % 65536, i % 10 == 9 ? '\n' : ' ');
+  // Stop timer and restore settings
+  HAL_TIM_Base_Stop(&tim16);
+  HAL_TIM_Base_DeInit(&tim16);
+  TIM_ClockConfigTypeDef tim16_cfg_int = {
+    .ClockSource = TIM_CLOCKSOURCE_INTERNAL,
+    .ClockPolarity = TIM_CLOCKPOLARITY_RISING,
+    .ClockPrescaler = TIM_CLOCKPRESCALER_DIV1,
+    .ClockFilter = 0,
+  };
+  HAL_TIM_ConfigClockSource(&tim16, &tim16_cfg_int);
+
   adc_ch13.Channel = ADC_CHANNEL_VREFINT;
   adc_ch13.Rank = ADC_REGULAR_RANK_1;
   adc_ch13.SamplingTime = ADC_SAMPLETIME_79CYCLES_5; // Stablize
