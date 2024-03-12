@@ -493,7 +493,6 @@ if (1) {
     TIM16->CCR1 = 0;
     HAL_Delay(100);
   }
-  continue;
 
   epd_reset(true);
 #if 0   // Not correct, only displays top part, RAM not retained?
@@ -526,6 +525,7 @@ if (1) {
   // Deep sleep
   epd_cmd(0x10, 0x03);
 }
+    sleep_delay(1500);
   }
 
   for (int i = 0; i < 10; i++) {
