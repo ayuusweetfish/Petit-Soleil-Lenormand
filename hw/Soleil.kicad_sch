@@ -3233,9 +3233,9 @@
   )
 
   (symbol (lib_id "Device:Q_NMOS_GSD") (at 55.88 147.955 0) (unit 1)
-    (in_bom yes) (on_board yes) (dnp no) (fields_autoplaced)
+    (in_bom yes) (on_board yes) (dnp no)
     (uuid 15d0d912-69d7-40fa-aaae-15dd395b1b48)
-    (property "Reference" "Q1" (at 61.595 146.685 0)
+    (property "Reference" "Q2" (at 61.595 146.685 0)
       (effects (font (size 1.27 1.27)) (justify left))
     )
     (property "Value" "2N7002" (at 61.595 149.225 0)
@@ -3253,7 +3253,7 @@
     (instances
       (project "Soleil"
         (path "/218ebbfa-f714-4191-a352-4c256789be77"
-          (reference "Q1") (unit 1)
+          (reference "Q2") (unit 1)
         )
       )
     )
@@ -3884,7 +3884,7 @@
   (symbol (lib_id "Transistor_BJT:MMBT3904") (at 43.18 102.87 0) (unit 1)
     (in_bom yes) (on_board yes) (dnp no) (fields_autoplaced)
     (uuid 60ee018d-9f3b-4b63-b3ef-ad84dca0525c)
-    (property "Reference" "Q2" (at 48.26 101.6 0)
+    (property "Reference" "Q1" (at 48.26 101.6 0)
       (effects (font (size 1.27 1.27)) (justify left))
     )
     (property "Value" "MMBT3904" (at 48.26 104.14 0)
@@ -3902,7 +3902,7 @@
     (instances
       (project "Soleil"
         (path "/218ebbfa-f714-4191-a352-4c256789be77"
-          (reference "Q2") (unit 1)
+          (reference "Q1") (unit 1)
         )
       )
     )
