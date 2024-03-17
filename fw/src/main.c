@@ -281,6 +281,7 @@ int main()
     *(uint32_t *)(UID_BASE + 0),
     *(uint32_t *)(UID_BASE + 4),
     *(uint32_t *)(UID_BASE + 8));
+  swv_printf("HSICAL = %u\n", LL_RCC_HSI_GetCalibration());
 /*
   swv_printf("pixels: %08x %08x %08x %08x\n",
     *(uint32_t *)(pixels +  0),

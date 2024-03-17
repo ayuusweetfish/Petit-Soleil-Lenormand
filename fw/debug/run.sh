@@ -1,3 +1,5 @@
+# (cd ~/Downloads/stlink; ./build/Release/bin/st-info --probe --connect-under-reset)
+
 # ~/.platformio/packages/tool-openocd/bin/openocd -f interface/stlink.cfg -f target/stm32g0x.cfg -c 'adapter speed 32000'
 
 cat >debug/gdbinit <<EOF
