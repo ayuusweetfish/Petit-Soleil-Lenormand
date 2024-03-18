@@ -15,28 +15,6 @@
 /*                                                                      */
 /* Dr Brian Gladman (gladman@seven77.demon.co.uk) 14th January 1999     */
 
-/* Timing data for Twofish (twofish.c)
-
-128 bit key:
-Key Setup:    8414 cycles
-Encrypt:       376 cycles =    68.1 mbits/sec
-Decrypt:       374 cycles =    68.4 mbits/sec
-Mean:          375 cycles =    68.3 mbits/sec
-
-192 bit key:
-Key Setup:   11628 cycles
-Encrypt:       376 cycles =    68.1 mbits/sec
-Decrypt:       374 cycles =    68.4 mbits/sec
-Mean:          375 cycles =    68.3 mbits/sec
-
-256 bit key:
-Key Setup:   15457 cycles
-Encrypt:       381 cycles =    67.2 mbits/sec
-Decrypt:       374 cycles =    68.4 mbits/sec
-Mean:          378 cycles =    67.8 mbits/sec
-
-*/
-
 // #include "../std_defs.h"
 // ====== start of std_defs.h ======
 /* 1. Standard types for AES cryptography source code               */
@@ -50,24 +28,7 @@ typedef int8_t    s1byte; /* an 8 bit signed character type   */
 typedef int16_t   s2byte; /* a 16 bit signed integer type     */
 typedef int32_t   s4byte; /* a 32 bit signed integer type     */
 
-/* 2. Standard interface for AES cryptographic routines             */
-
-/* These are all based on 32 bit unsigned values and will therefore */
-/* require endian conversions for big-endian architectures          */
-
-#ifdef  __cplusplus
-    extern "C"
-    {
-#endif
-
-    char **cipher_name(void);
-    u4byte *set_key(const u4byte in_key[], const u4byte key_len);
-    void encrypt(const u4byte in_blk[4], u4byte out_blk[4]);
-    void decrypt(const u4byte in_blk[4], u4byte out_blk[4]);
-
-#ifdef  __cplusplus
-    };
-#endif
+// ====== snip ======
 
 /* 3. Basic macros for speeding up generic operations               */
 
@@ -94,151 +55,62 @@ typedef int32_t   s4byte; /* a 32 bit signed integer type     */
 /* Extract byte from a 32 bit quantity (little endian notation)     */ 
 
 #define byte(x,n)   ((u1byte)((x) >> (8 * n)))
-
-/* For inverting byte order in input/output 32 bit words if needed  */
-
-#ifdef  BLOCK_SWAP
-#define BYTE_SWAP
-#define WORD_SWAP
-#endif
-
-#ifdef  BYTE_SWAP
-#define io_swap(x)  bswap(x)
-#else
-#define io_swap(x)  (x)
-#endif
-
-/* For inverting the byte order of input/output blocks if needed    */
-
-#ifdef  WORD_SWAP
-
-#define get_block(x)                            \
-    ((u4byte*)(x))[0] = io_swap(in_blk[3]);     \
-    ((u4byte*)(x))[1] = io_swap(in_blk[2]);     \
-    ((u4byte*)(x))[2] = io_swap(in_blk[1]);     \
-    ((u4byte*)(x))[3] = io_swap(in_blk[0])
-
-#define put_block(x)                            \
-    out_blk[3] = io_swap(((u4byte*)(x))[0]);    \
-    out_blk[2] = io_swap(((u4byte*)(x))[1]);    \
-    out_blk[1] = io_swap(((u4byte*)(x))[2]);    \
-    out_blk[0] = io_swap(((u4byte*)(x))[3])
-
-#define get_key(x,len)                          \
-    ((u4byte*)(x))[4] = ((u4byte*)(x))[5] =     \
-    ((u4byte*)(x))[6] = ((u4byte*)(x))[7] = 0;  \
-    switch((((len) + 63) / 64)) {               \
-    case 2:                                     \
-    ((u4byte*)(x))[0] = io_swap(in_key[3]);     \
-    ((u4byte*)(x))[1] = io_swap(in_key[2]);     \
-    ((u4byte*)(x))[2] = io_swap(in_key[1]);     \
-    ((u4byte*)(x))[3] = io_swap(in_key[0]);     \
-    break;                                      \
-    case 3:                                     \
-    ((u4byte*)(x))[0] = io_swap(in_key[5]);     \
-    ((u4byte*)(x))[1] = io_swap(in_key[4]);     \
-    ((u4byte*)(x))[2] = io_swap(in_key[3]);     \
-    ((u4byte*)(x))[3] = io_swap(in_key[2]);     \
-    ((u4byte*)(x))[4] = io_swap(in_key[1]);     \
-    ((u4byte*)(x))[5] = io_swap(in_key[0]);     \
-    break;                                      \
-    case 4:                                     \
-    ((u4byte*)(x))[0] = io_swap(in_key[7]);     \
-    ((u4byte*)(x))[1] = io_swap(in_key[6]);     \
-    ((u4byte*)(x))[2] = io_swap(in_key[5]);     \
-    ((u4byte*)(x))[3] = io_swap(in_key[4]);     \
-    ((u4byte*)(x))[4] = io_swap(in_key[3]);     \
-    ((u4byte*)(x))[5] = io_swap(in_key[2]);     \
-    ((u4byte*)(x))[6] = io_swap(in_key[1]);     \
-    ((u4byte*)(x))[7] = io_swap(in_key[0]);     \
-    }
-
-#else
-
-#define get_block(x)                            \
-    ((u4byte*)(x))[0] = io_swap(in_blk[0]);     \
-    ((u4byte*)(x))[1] = io_swap(in_blk[1]);     \
-    ((u4byte*)(x))[2] = io_swap(in_blk[2]);     \
-    ((u4byte*)(x))[3] = io_swap(in_blk[3])
-
-#define put_block(x)                            \
-    out_blk[0] = io_swap(((u4byte*)(x))[0]);    \
-    out_blk[1] = io_swap(((u4byte*)(x))[1]);    \
-    out_blk[2] = io_swap(((u4byte*)(x))[2]);    \
-    out_blk[3] = io_swap(((u4byte*)(x))[3])
-
-#define get_key(x,len)                          \
-    ((u4byte*)(x))[4] = ((u4byte*)(x))[5] =     \
-    ((u4byte*)(x))[6] = ((u4byte*)(x))[7] = 0;  \
-    switch((((len) + 63) / 64)) {               \
-    case 4:                                     \
-    ((u4byte*)(x))[6] = io_swap(in_key[6]);     \
-    ((u4byte*)(x))[7] = io_swap(in_key[7]);     \
-    case 3:                                     \
-    ((u4byte*)(x))[4] = io_swap(in_key[4]);     \
-    ((u4byte*)(x))[5] = io_swap(in_key[5]);     \
-    case 2:                                     \
-    ((u4byte*)(x))[0] = io_swap(in_key[0]);     \
-    ((u4byte*)(x))[1] = io_swap(in_key[1]);     \
-    ((u4byte*)(x))[2] = io_swap(in_key[2]);     \
-    ((u4byte*)(x))[3] = io_swap(in_key[3]);     \
-    }
-
-#endif
 // ====== end of std_defs.h ======
 
-#define Q_TABLES
-#define M_TABLE
-#define MK_TABLE
-#define ONE_STEP
+// #define Q_TABLES
+// #define M_TABLE
+// #define MK_TABLE
+// #define ONE_STEP
 
+/*
 static char *alg_name[] = { "twofish", "twofish.c", "twofish" };
 
 char **cipher_name()
 {
     return alg_name;
 }
+*/
 
-u4byte  k_len;
-u4byte  l_key[40];
-u4byte  s_key[4];
+static u4byte  k_len;
+static u4byte  l_key[40];
+static u4byte  s_key[4];
 
 /* finite field arithmetic for GF(2**8) with the modular    */
 /* polynomial x^8 + x^6 + x^5 + x^3 + 1 (0x169)             */
 
 #define G_M 0x0169
 
-u1byte  tab_5b[4] = { 0, G_M >> 2, G_M >> 1, (G_M >> 1) ^ (G_M >> 2) };
-u1byte  tab_ef[4] = { 0, (G_M >> 1) ^ (G_M >> 2), G_M >> 1, G_M >> 2 };
+static u1byte  tab_5b[4] = { 0, G_M >> 2, G_M >> 1, (G_M >> 1) ^ (G_M >> 2) };
+static u1byte  tab_ef[4] = { 0, (G_M >> 1) ^ (G_M >> 2), G_M >> 1, G_M >> 2 };
 
 #define ffm_01(x)    (x)
 #define ffm_5b(x)   ((x) ^ ((x) >> 2) ^ tab_5b[(x) & 3])
 #define ffm_ef(x)   ((x) ^ ((x) >> 1) ^ ((x) >> 2) ^ tab_ef[(x) & 3])
 
-u1byte ror4[16] = { 0, 8, 1, 9, 2, 10, 3, 11, 4, 12, 5, 13, 6, 14, 7, 15 };
-u1byte ashx[16] = { 0, 9, 2, 11, 4, 13, 6, 15, 8, 1, 10, 3, 12, 5, 14, 7 };
+static u1byte ror4[16] = { 0, 8, 1, 9, 2, 10, 3, 11, 4, 12, 5, 13, 6, 14, 7, 15 };
+static u1byte ashx[16] = { 0, 9, 2, 11, 4, 13, 6, 15, 8, 1, 10, 3, 12, 5, 14, 7 };
 
-u1byte qt0[2][16] = 
+static u1byte qt0[2][16] = 
 {   { 8, 1, 7, 13, 6, 15, 3, 2, 0, 11, 5, 9, 14, 12, 10, 4 },
     { 2, 8, 11, 13, 15, 7, 6, 14, 3, 1, 9, 4, 0, 10, 12, 5 }
 };
 
-u1byte qt1[2][16] =
+static u1byte qt1[2][16] =
 {   { 14, 12, 11, 8, 1, 2, 3, 5, 15, 4, 10, 6, 7, 0, 9, 13 }, 
     { 1, 14, 2, 11, 4, 12, 3, 7, 6, 13, 10, 5, 15, 9, 0, 8 }
 };
 
-u1byte qt2[2][16] = 
+static u1byte qt2[2][16] = 
 {   { 11, 10, 5, 14, 6, 13, 9, 0, 12, 8, 15, 3, 2, 4, 7, 1 },
     { 4, 12, 7, 5, 1, 6, 9, 10, 0, 14, 13, 8, 2, 11, 3, 15 }
 };
 
-u1byte qt3[2][16] = 
+static u1byte qt3[2][16] = 
 {   { 13, 7, 15, 4, 1, 2, 6, 14, 9, 11, 3, 0, 8, 5, 12, 10 },
     { 11, 9, 5, 1, 12, 3, 13, 14, 6, 4, 7, 15, 2, 0, 8, 10 }
 };
  
-u1byte qp(const u4byte n, const u1byte x)
+static u1byte qp(const u4byte n, const u1byte x)
 {   u1byte  a0, a1, a2, a3, a4, b0, b1, b2, b3, b4;
 
     a0 = x >> 4; b0 = x & 15;
@@ -251,12 +123,12 @@ u1byte qp(const u4byte n, const u1byte x)
 
 #ifdef  Q_TABLES
 
-u4byte  qt_gen = 0;
-u1byte  q_tab[2][256];
+static u4byte  qt_gen = 0;
+static u1byte  q_tab[2][256];
 
 #define q(n,x)  q_tab[n][x]
 
-void gen_qtab(void)
+static void gen_qtab(void)
 {   u4byte  i;
 
     for(i = 0; i < 256; ++i)
@@ -274,10 +146,10 @@ void gen_qtab(void)
 
 #ifdef  M_TABLE
 
-u4byte  mt_gen = 0;
-u4byte  m_tab[4][256];
+static u4byte  mt_gen = 0;
+static u4byte  m_tab[4][256];
 
-void gen_mtab(void)
+static void gen_mtab(void)
 {   u4byte  i, f01, f5b, fef;
     
     for(i = 0; i < 256; ++i)
@@ -329,7 +201,7 @@ void gen_mtab(void)
 
 #endif
 
-u4byte h_fun(const u4byte x, const u4byte key[])
+static u4byte h_fun(const u4byte x, const u4byte key[])
 {   u4byte  b0, b1, b2, b3;
 
 #ifndef M_TABLE
@@ -374,9 +246,9 @@ u4byte h_fun(const u4byte x, const u4byte key[])
 #ifdef  MK_TABLE
 
 #ifdef  ONE_STEP
-u4byte  mk_tab[4][256];
+static u4byte  mk_tab[4][256];
 #else
-u1byte  sb[4][256];
+static u1byte  sb[4][256];
 #endif
 
 #define q20(x)  q(0,q(0,x) ^ byte(key[1],0)) ^ byte(key[0],0)
@@ -394,7 +266,7 @@ u1byte  sb[4][256];
 #define q42(x)  q(1,q(0,q(0, q(0, x) ^ byte(key[3],2)) ^ byte(key[2],2)) ^ byte(key[1],2)) ^ byte(key[0],2)
 #define q43(x)  q(1,q(1,q(0, q(1, x) ^ byte(key[3],3)) ^ byte(key[2],3)) ^ byte(key[1],3)) ^ byte(key[0],3)
 
-gen_mk_tab(u4byte key[])
+static void gen_mk_tab(u4byte key[])
 {   u4byte  i;
     u1byte  by;
 
@@ -488,7 +360,7 @@ to implement.
 
 #define G_MOD   0x0000014d
 
-u4byte mds_rem(u4byte p0, u4byte p1)
+static u4byte mds_rem(u4byte p0, u4byte p1)
 {   u4byte  i, t, u;
 
     for(i = 0; i < 8; ++i)
@@ -521,7 +393,7 @@ u4byte mds_rem(u4byte p0, u4byte p1)
 
 /* initialise the key schedule from the user supplied key   */
 
-u4byte *set_key(const u4byte in_key[], const u4byte key_len)
+static u4byte *twofish_set_key(const u4byte in_key[], const u4byte key_len)
 {   u4byte  i, a, b, me_key[4], mo_key[4];
 
 #ifdef Q_TABLES
@@ -573,7 +445,7 @@ u4byte *set_key(const u4byte in_key[], const u4byte key_len)
     blk[0] = rotr(blk[0] ^ (t0 + t1 + l_key[4 * (i) + 10]), 1);     \
     blk[1] = rotl(blk[1], 1) ^ (t0 + 2 * t1 + l_key[4 * (i) + 11])
 
-void encrypt(const u4byte in_blk[4], u4byte out_blk[])
+static void twofish_encrypt(const u4byte in_blk[4], u4byte out_blk[])
 {   u4byte  t0, t1, blk[4];
 
     blk[0] = in_blk[0] ^ l_key[0];
@@ -600,7 +472,7 @@ void encrypt(const u4byte in_blk[4], u4byte out_blk[])
         blk[0] = rotl(blk[0], 1) ^ (t0 + t1 + l_key[4 * (i) +  8]);     \
         blk[1] = rotr(blk[1] ^ (t0 + 2 * t1 + l_key[4 * (i) +  9]), 1)
 
-void decrypt(const u4byte in_blk[4], u4byte out_blk[4])
+static void twofish_decrypt(const u4byte in_blk[4], u4byte out_blk[4])
 {   u4byte  t0, t1, blk[4];
 
     blk[0] = in_blk[0] ^ l_key[4];
