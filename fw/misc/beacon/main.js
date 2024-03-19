@@ -1,4 +1,5 @@
 import { decodeHex } from 'https://deno.land/std@0.220.1/encoding/hex.ts'
+import { shake256 } from 'npm:@noble/hashes@1.3.0/sha3'
 
 // Beacons
 const src_drand = async (timestamp) => {
@@ -10,7 +11,7 @@ const src_drand = async (timestamp) => {
 const src_irb = (baseUrl) => async (timestamp) => {
   timestamp -= timestamp % 60000
   const payload = await (await fetch(`${baseUrl}${timestamp}`)).json()
-  return payload['pulse']['localRandomValue']
+  return payload['pulse']['outputValue']
 }
 const src_irb_nist = src_irb('https://beacon.nist.gov/beacon/2.0/pulse/time/')
 // --unsafely-ignore-certificate-errors=beacon.inmetro.gov.br
@@ -161,7 +162,21 @@ const tryUpdateCurrent = async (timestamp) => {
   const results = await Promise.allSettled(promises)
   for (const [[key, _], result] of zip(Object.entries(sources), results)) {
     console.log(key, result)
+    if (result.status === 'fulfilled') {
+      // console.log(shake256(result.value, { dkLen: 512 }))
+      current[key] = result.value
+    }
   }
+}
+const digestCurrent = () => {
+  const entries = Object.entries(current)
+  entries.sort((a, b) => a[0].localeCompare(b[0]))
+  const digest = shake256.create({ dkLen: 512 })
+  for (const [key, value] of entries) {
+    console.log(key)
+    digest.update(value)
+  }
+  return digest.digest()
 }
 const clearCurrent = () => {
   for (const key of Object.getOwnPropertyNames(current)) {
@@ -171,3 +186,4 @@ const clearCurrent = () => {
 
 const timestamp = Date.now() - 30 * 60000
 await tryUpdateCurrent(timestamp)
+console.log(digestCurrent())
