@@ -1,5 +1,5 @@
 import { decodeHex } from 'https://deno.land/std@0.220.1/encoding/hex.ts'
-import { shake256 } from 'npm:@noble/hashes@1.3.0/sha3'
+import { keccakprg } from 'npm:@noble/hashes@1.3.0/sha3-addons'
 
 // Beacons
 const src_drand = async (timestamp) => {
@@ -139,7 +139,7 @@ const sources = {
   'INMETRO beacon': src_irb_inmetro_br_m,
   'UChile beacon': src_irb_uchile_m,
   'FY Geostationary IR 10.8u': src_fy_geostationary,
-  'FY-4B Geo Color': src_fy4b_disk,
+  // 'FY-4B Geo Color': (timestamp) => src_fy4b_disk(timestamp - 30*60000),
   'GOES-18 GeoColor': src_goes18_noaa,
   'Himawari-9 IR B13': src_himawari_b13,
   'Himawari-9 True Color Reproduction': src_himawari_trm,
@@ -160,23 +160,41 @@ const tryUpdateCurrent = async (timestamp) => {
   }
   const zip = (...as) => [...as[0]].map((_, i) => as.map((a) => a[i]))
   const results = await Promise.allSettled(promises)
+  const rejects = {}
   for (const [[key, _], result] of zip(Object.entries(sources), results)) {
-    console.log(key, result)
+    // console.log(key, result)
     if (result.status === 'fulfilled') {
-      // console.log(shake256(result.value, { dkLen: 512 }))
-      current[key] = result.value
+      if (result.value !== null) current[key] = result.value
+    } else {
+      rejects[key] = result.reason
     }
   }
+  return rejects
 }
 const digestCurrent = () => {
   const entries = Object.entries(current)
   entries.sort((a, b) => a[0].localeCompare(b[0]))
-  const digest = shake256.create({ dkLen: 512 })
+  const prng = keccakprg(510)
   for (const [key, value] of entries) {
-    console.log(key)
-    digest.update(value)
+    // console.log(key)
+    prng.feed(value)
   }
-  return digest.digest()
+  const result = prng.fetch(4096)
+  let curIndex = 0
+  for (const [key, value] of entries) {
+    for (let i = 0; i < value.length; i += 64) {
+      prng.feed(value.slice(i, i + 64))
+      const digestBlock = prng.fetch(64)
+      curIndex += 1
+      for (let i = 0; i < 64; i++) {
+        result[curIndex] ^= digestBlock[i]
+        curIndex = (curIndex + 1) % 4096
+      }
+    }
+  }
+  const whiten = prng.fetch(4096)
+  for (let i = 0; i < 4096; i++) result[4095 - i] ^= whiten[i]
+  return result
 }
 const clearCurrent = () => {
   for (const key of Object.getOwnPropertyNames(current)) {
@@ -184,6 +202,19 @@ const clearCurrent = () => {
   }
 }
 
-const timestamp = Date.now() - 30 * 60000
-await tryUpdateCurrent(timestamp)
-console.log(digestCurrent())
+// XXX: Use `Deno.cron`?
+const checkUpdate = async () => {
+  console.log('checking')
+  let timestamp = Date.now()
+  timestamp -= timestamp % (60 * 60000)
+  const rejects = await tryUpdateCurrent(timestamp)
+  console.log('rejects', rejects)
+  timestamp = Date.now()
+  const offs = 1 * 60000
+  const interval = 5 * 60000
+  const delay = (timestamp + offs + interval) - (timestamp + offs) % interval - timestamp
+  setTimeout(checkUpdate, delay)
+  console.log('delay', delay)
+  console.log('digest', digestCurrent())
+}
+checkUpdate()
