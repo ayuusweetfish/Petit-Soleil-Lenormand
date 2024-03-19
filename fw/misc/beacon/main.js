@@ -15,7 +15,21 @@ const src_irb_nist = src_irb('https://beacon.nist.gov/beacon/2.0/pulse/time/')
 const src_irb_inmetro_br = src_irb('https://beacon.inmetro.gov.br/beacon/2.1/pulse/time/')
 const src_irb_uchile = src_irb('https://random.uchile.cl/beacon/2.1-beta/pulse?timeGE=')
 
-const fetchImage = async (url, modifiedAfter) => {
+const src_beacon_multi = (fn, interval, count) => async (timestamp) => {
+  const promises = []
+  for (let i = 0; i < count; i++) {
+    promises.push(fn(timestamp))
+    timestamp -= interval
+  }
+  const results = await Promise.all(promises)
+  return results.join('')
+}
+const src_drand_m = src_beacon_multi(src_drand, 30000, 20)
+const src_irb_nist_m = src_beacon_multi(src_irb_nist, 60000, 5)
+const src_irb_inmetro_br_m = src_beacon_multi(src_irb_inmetro_br, 60000, 20)
+const src_irb_uchile_m = src_beacon_multi(src_irb_uchile, 60000, 20)
+
+const fetchImage = async (url, modifiedAfter, modifiedBefore) => {
   console.log(url)
   const resp = await fetch(url)
   if (modifiedAfter !== undefined) {
@@ -23,8 +37,8 @@ const fetchImage = async (url, modifiedAfter) => {
       throw new Error(`Do not know when last modified`)
     }
     const modifiedAt = new Date(resp.headers.get('Last-Modified'))
-    if (modifiedAt < modifiedAfter) {
-      throw new Error(`Not updated since ${modifiedAt.toISOString()}`)
+    if (modifiedAt < modifiedAfter || modifiedAt > modifiedBefore) {
+      throw new Error(`Modification timestamp ${modifiedAt.toISOString()} not in ${modifiedAfter.toISOString()}/${modifiedBefore.toISOString()}`)
     }
   }
   const payload = await resp.blob()
@@ -35,7 +49,7 @@ const fetchImage = async (url, modifiedAfter) => {
 }
 
 // Satellite images
-const src_fengyun = async (timestamp) => {
+const src_fy_geostationary = async (timestamp) => {
   timestamp -= timestamp % (60 * 60000)
   const date = new Date(timestamp)
   const dateStr =
@@ -44,7 +58,7 @@ const src_fengyun = async (timestamp) => {
     date.getUTCDate().toString().padStart(2, '0')
   const hourStr = date.getUTCHours().toString().padStart(2, '0')
   const payload = await fetchImage(`https://img.nsmc.org.cn/CLOUDIMAGE/GEOS/MOS/IRX/PIC/GBAL/${dateStr}/GEOS_IMAGR_GBAL_L2_MOS_IRX_GLL_${dateStr}_${hourStr}00_10KM_MS.jpg`)
-  console.log(payload)
+  return payload
 }
 const src_fy4b_disk = async (timestamp) => {
   timestamp -= timestamp % (15 * 60000)
@@ -56,9 +70,9 @@ const src_fy4b_disk = async (timestamp) => {
   const hourStr = date.getUTCHours().toString().padStart(2, '0')
   const minute = date.getUTCMinutes()
   const payload = await fetchImage(`https://img.nsmc.org.cn/CLOUDIMAGE/FY4B/AGRI/GCLR/DISK/FY4B-_AGRI--_N_DISK_1050E_L2-_GCLR_MULT_NOM_${dateStr}${hourStr}${minute.toString().padStart(2, '0')}00_${dateStr}${hourStr}${minute + 14}59_1000M_V0001.JPG`)
-  console.log(payload)
+  return payload
 }
-const src_noaa = async (timestamp) => {
+const src_goes18_noaa = async (timestamp) => {
   timestamp -= timestamp % (10 * 60000)
   const date = new Date(timestamp)
   const dayOfYear = Math.floor((date - Date.UTC(date.getUTCFullYear(), 0, 0)) / 86400_000)
@@ -69,19 +83,22 @@ const src_noaa = async (timestamp) => {
     date.getUTCHours().toString().padStart(2, '0') +
     date.getUTCMinutes().toString().padStart(2, '0')
   const payload = await fetchImage(`https://cdn.star.nesdis.noaa.gov/GOES18/ABI/FD/GEOCOLOR/${yearDayStr}${hourMinStr}_GOES18-ABI-FD-GEOCOLOR-1808x1808.jpg`)
-  console.log(payload)
+  return payload
 }
-const src_himawari = async (timestamp) => {
+const src_himawari = (type) => async (timestamp) => {
   timestamp -= timestamp % (10 * 60000)
   const date = new Date(timestamp)
   const hourMinStr =
     date.getUTCHours().toString().padStart(2, '0') +
     date.getUTCMinutes().toString().padStart(2, '0')
-  const payload = await fetchImage(`https://www.data.jma.go.jp/mscweb/data/himawari/img/fd_/fd__trm_${hourMinStr}.jpg`,
-    new Date(timestamp - 60 * 60000))
-  console.log(payload)
+  const payload = await fetchImage(`https://www.data.jma.go.jp/mscweb/data/himawari/img/fd_/fd__${type}_${hourMinStr}.jpg`,
+    new Date(timestamp - 60 * 60000),
+    new Date(timestamp + 60 * 60000))
+  return payload
 }
-const src_meteosat_eumetsat = async (timestamp) => {
+const src_himawari_b13 = src_himawari('b13')
+const src_himawari_trm = src_himawari('trm')
+const src_meteosat_eumetsat = (type) => async (timestamp) => {
   timestamp -= timestamp % (15 * 60000)
   const date = new Date(timestamp)
   const dateStr =
@@ -92,12 +109,12 @@ const src_meteosat_eumetsat = async (timestamp) => {
     date.getUTCHours().toString().padStart(2, '0') + ':' +
     date.getUTCMinutes().toString().padStart(2, '0')
 
-  const page = await (await fetch('https://eumetview.eumetsat.int/static-images/MSG/IMAGERY/IR039/BW/FULLDISC/')).text()
+  const page = await (await fetch(`https://eumetview.eumetsat.int/static-images/MSG/IMAGERY/${type}/BW/FULLDISC/`)).text()
 
   const reStr1 = `<option value=['"](\\d+)['"]>\\s*${dateStr}\\s+${hourMinStr}\\s+UTC\\s*</option>`
   const matched1 = page.match(new RegExp(reStr1))
   if (matched1 === null) {
-    throw new Error('Cannot extract time from page')
+    throw new Error('Timestamped image not found (maybe not uploaded)')
   }
   const imageIndex = +matched1[1]
   const reStr2 = `array_nom_imagen\\[${imageIndex}\\].+['"](\\w+)['"]`
@@ -107,21 +124,48 @@ const src_meteosat_eumetsat = async (timestamp) => {
   }
   const imageName = matched2[1]
 
-  const payload = await fetchImage(`https://eumetview.eumetsat.int/static-images/MSG/IMAGERY/IR039/BW/FULLDISC/IMAGESDisplay/${imageName}`)
-  console.log(payload)
+  const payload = await fetchImage(`https://eumetview.eumetsat.int/static-images/MSG/IMAGERY/${type}/BW/FULLDISC/IMAGESDisplay/${imageName}`)
+  return payload
+}
+const src_meteosat_ir039 = src_meteosat_eumetsat('IR039')
+const src_meteosat_ir108 = src_meteosat_eumetsat('IR108')
+
+const sources = {
+  'drand': src_drand_m,
+  'NIST beacon': src_irb_nist_m,
+  'INMETRO beacon': src_irb_inmetro_br_m,
+  'UChile beacon': src_irb_uchile_m,
+  'FY Geostationary IR 10.8u': src_fy_geostationary,
+  'FY-4B Geo Color': src_fy4b_disk,
+  'GOES-18 GeoColor': src_goes18_noaa,
+  'Himawari-9 IR B13': src_himawari_b13,
+  'Himawari-9 True Color Reproduction': src_himawari_trm,
+  'Meteosat IR 0.39u': src_meteosat_ir039,
+  'Meteosat IR 10.8u': src_meteosat_ir108,
+}
+const current = {}
+
+const tryUpdateCurrent = async (timestamp) => {
+  timestamp -= timestamp % (60 * 60000)
+  const promises = []
+  for (const [key, fn] of Object.entries(sources)) {
+    if (current[key] === undefined) {
+      promises.push(fn(timestamp))
+    } else {
+      promises.push(null)
+    }
+  }
+  const zip = (...as) => [...as[0]].map((_, i) => as.map((a) => a[i]))
+  const results = await Promise.allSettled(promises)
+  for (const [[key, _], result] of zip(Object.entries(sources), results)) {
+    console.log(key, result)
+  }
+}
+const clearCurrent = () => {
+  for (const key of Object.getOwnPropertyNames(current)) {
+    delete current[key]
+  }
 }
 
-const timestamp = 1710826860000 - 30*60000 // Date.now()
-/*
-console.log(await src_drand(timestamp))
-console.log(await src_irb_nist(timestamp))
-console.log(await src_irb_inmetro_br(timestamp))
-console.log(await src_irb_uchile(timestamp))
-*/
-/*
-console.log(await src_fengyun(timestamp))
-console.log(await src_fy4b_disk(timestamp))
-console.log(await src_noaa(timestamp))
-console.log(await src_himawari(timestamp))
-*/
-console.log(await src_meteosat_eumetsat(timestamp))
+const timestamp = Date.now() - 30 * 60000
+await tryUpdateCurrent(timestamp)
