@@ -1,3 +1,5 @@
+import { decodeHex } from 'https://deno.land/std@0.220.1/encoding/hex.ts'
+
 // Beacons
 const src_drand = async (timestamp) => {
   // https://api.drand.sh/8990e7a9aaed2ffed73dbd7092123d6f289930540d7651336225dc172e51b2ce/info
@@ -22,7 +24,7 @@ const src_beacon_multi = (fn, interval, count) => async (timestamp) => {
     timestamp -= interval
   }
   const results = await Promise.all(promises)
-  return results.join('')
+  return decodeHex(results.join(''))
 }
 const src_drand_m = src_beacon_multi(src_drand, 30000, 20)
 const src_irb_nist_m = src_beacon_multi(src_irb_nist, 60000, 5)
@@ -45,7 +47,7 @@ const fetchImage = async (url, modifiedAfter, modifiedBefore) => {
   if (resp.status >= 400 || !payload.type.startsWith('image/')) {
     throw new Error(`Received status ${resp.status}, type ${payload.type}`)
   }
-  return payload
+  return new Uint8Array(await payload.arrayBuffer())
 }
 
 // Satellite images
