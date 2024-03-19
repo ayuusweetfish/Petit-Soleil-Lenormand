@@ -81,15 +81,47 @@ const src_himawari = async (timestamp) => {
     new Date(timestamp - 60 * 60000))
   console.log(payload)
 }
+const src_meteosat_eumetsat = async (timestamp) => {
+  timestamp -= timestamp % (15 * 60000)
+  const date = new Date(timestamp)
+  const dateStr =
+    date.getUTCDate().toString().padStart(2, '0') + '/' +
+    (date.getUTCMonth() + 1).toString().padStart(2, '0') + '/' +
+    (date.getUTCFullYear() % 100).toString().padStart(2, '0')
+  const hourMinStr =
+    date.getUTCHours().toString().padStart(2, '0') + ':' +
+    date.getUTCMinutes().toString().padStart(2, '0')
 
-const timestamp = 1710826860000 // Date.now()
+  const page = await (await fetch('https://eumetview.eumetsat.int/static-images/MSG/IMAGERY/IR039/BW/FULLDISC/')).text()
+
+  const reStr1 = `<option value=['"](\\d+)['"]>\\s*${dateStr}\\s+${hourMinStr}\\s+UTC\\s*</option>`
+  const matched1 = page.match(new RegExp(reStr1))
+  if (matched1 === null) {
+    throw new Error('Cannot extract time from page')
+  }
+  const imageIndex = +matched1[1]
+  const reStr2 = `array_nom_imagen\\[${imageIndex}\\].+['"](\\w+)['"]`
+  const matched2 = page.match(new RegExp(reStr2))
+  if (matched2 === null) {
+    throw new Error('Cannot extract image name from page')
+  }
+  const imageName = matched2[1]
+
+  const payload = await fetchImage(`https://eumetview.eumetsat.int/static-images/MSG/IMAGERY/IR039/BW/FULLDISC/IMAGESDisplay/${imageName}`)
+  console.log(payload)
+}
+
+const timestamp = 1710826860000 - 30*60000 // Date.now()
 /*
 console.log(await src_drand(timestamp))
 console.log(await src_irb_nist(timestamp))
 console.log(await src_irb_inmetro_br(timestamp))
 console.log(await src_irb_uchile(timestamp))
 */
+/*
 console.log(await src_fengyun(timestamp))
 console.log(await src_fy4b_disk(timestamp))
 console.log(await src_noaa(timestamp))
 console.log(await src_himawari(timestamp))
+*/
+console.log(await src_meteosat_eumetsat(timestamp))
