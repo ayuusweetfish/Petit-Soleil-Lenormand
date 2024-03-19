@@ -202,19 +202,14 @@ const clearCurrent = () => {
   }
 }
 
-// XXX: Use `Deno.cron`?
 const checkUpdate = async () => {
   console.log('checking')
   let timestamp = Date.now()
   timestamp -= timestamp % (60 * 60000)
   const rejects = await tryUpdateCurrent(timestamp)
   console.log('rejects', rejects)
-  timestamp = Date.now()
-  const offs = 1 * 60000
-  const interval = 5 * 60000
-  const delay = (timestamp + offs + interval) - (timestamp + offs) % interval - timestamp
-  setTimeout(checkUpdate, delay)
-  console.log('delay', delay)
   console.log('digest', digestCurrent())
 }
-checkUpdate()
+await checkUpdate()
+// --unstable-cron
+Deno.cron('Check updates', '*/5 * * * *', checkUpdate)
