@@ -344,7 +344,8 @@ const initializeUpdate = async () => {
   await checkUpdate()
 }
 
-await initializeUpdate()
+// No need to initialize, as the startup state is a valid initialized one
+// await initializeUpdate()
 // --unstable-cron
 Deno.cron('Initialize updates', '0 * * * *', initializeUpdate)
 Deno.cron('Check updates', '5-44/5 * * * *', () => checkUpdate(false))
