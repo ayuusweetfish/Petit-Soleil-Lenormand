@@ -263,7 +263,7 @@ const miscSourceBlockHashForTimestamp = async (timestamp) => {
 
 const sources = {
   'FY Geostationary IR 10.8u': src_fy_geostationary_ir,
-  // 'FY Geostationary WV 7u': src_fy_geostationary_wv,
+  'FY Geostationary WV 7u': (timestamp) => src_fy_geostationary_wv(timestamp - 60 * 60000),
   // 'FY-4B Geo Color': (timestamp) => src_fy4b_disk(timestamp - 30*60000),
   'GOES-18 GeoColor': src_goes18_noaa,
   'Himawari-9 IR B13': src_himawari_b13,
