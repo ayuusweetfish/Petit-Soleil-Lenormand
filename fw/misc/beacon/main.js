@@ -175,6 +175,10 @@ const src_sdo_193 = src_sdo('0193')
 // const src_imd_ir1 = () => fetchImage(`http://satellite.imd.gov.in/imgr/globe_ir1.jpg`)
 // const src_imd_mp = () => fetchImage(`http://satellite.imd.gov.in/imgr/globe_mp.jpg`)
 
+// ====== Common utility functions ======
+
+const zip = (...as) => [...as[0]].map((_, i) => as.map((a) => a[i]))
+
 const hashAllEntries = (entries) => {
   entries.sort((a, b) => a[0].localeCompare(b[0]))
   const prng = keccakprg(510)
@@ -213,12 +217,17 @@ const miscSources = {
 }
 const miscSourcesConstruct = async (timestampRef) => {
   const results = await Promise.allSettled(
-    Object.entries(miscSources).map(([key, fn]) => (async () => [key, await fn(timestampRef)])())
+    Object.entries(miscSources).map(([key, fn]) => fn(timestampRef))
   )
-  const entries = results
-    // .map((result) => result.status === 'fulfilled' ? result.value : undefined)
-    .map((result) => result.value)
-    .filter((x) => x !== undefined)
+  const resultsKeyed = zip(Object.keys(miscSources), results)
+  const rejects = resultsKeyed
+    .filter(([key, result]) => result.status === 'rejected')
+    .map(([key, result]) => [key, result.reason.message])
+  if (rejects.length > 0)
+    persistLog('rejects ' + rejects.map(([key, message]) => `<${key}>: ${message}`).join('; '))
+  const entries = resultsKeyed
+    .filter(([key, result]) => result.status === 'fulfilled')
+    .map(([key, result]) => [key, result.value])
   const digestBlock = hashAllEntries(entries)
   const localRand = new Uint8Array(4096)
   crypto.getRandomValues(localRand)
@@ -275,7 +284,6 @@ const tryUpdateCurrent = async (timestamp) => {
       promises.push(null)
     }
   }
-  const zip = (...as) => [...as[0]].map((_, i) => as.map((a) => a[i]))
   const results = await Promise.allSettled(promises)
   const rejects = {}
   for (const [[key, _], result] of zip(Object.entries(sources), results)) {
