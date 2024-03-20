@@ -347,5 +347,5 @@ const initializeUpdate = async () => {
 await initializeUpdate()
 // --unstable-cron
 Deno.cron('Initialize updates', '0 * * * *', initializeUpdate)
-Deno.cron('Check updates', '5,44/5 * * * *', () => checkUpdate(false))
+Deno.cron('Check updates', '5-44/5 * * * *', () => checkUpdate(false))
 Deno.cron('Finalize updates', '45 * * * *', () => checkUpdate(true))
