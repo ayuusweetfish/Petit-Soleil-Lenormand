@@ -8,9 +8,9 @@ const src_drand = async (timestamp) => {
   const payload = await (await fetch(`https://api.drand.sh/public/${round}`)).json()
   return payload['randomness']
 }
-const src_irb = (baseUrl) => async (timestamp) => {
+const src_irb = (baseUrl, extraTime) => async (timestamp) => {
   timestamp -= timestamp % 60000
-  const payload = await (await fetch(`${baseUrl}${timestamp}`)).json()
+  const payload = await (await fetch(`${baseUrl}${timestamp + (extraTime || 0)}`)).json()
   return payload['pulse']['outputValue']
 }
 const src_irb_nist = src_irb('https://beacon.nist.gov/beacon/2.0/pulse/time/')
@@ -28,7 +28,7 @@ const src_beacon_multi = (fn, interval, count) => async (timestamp) => {
   return decodeHex(results.join(''))
 }
 const src_drand_m = src_beacon_multi(src_drand, 30000, 20)
-const src_irb_nist_m = src_beacon_multi(src_irb_nist, 60000, 5)
+const src_irb_nist_m = src_beacon_multi(src_irb_nist, 60000, 1)
 const src_irb_inmetro_br_m = src_beacon_multi(src_irb_inmetro_br, 60000, 20)
 const src_irb_uchile_m = src_beacon_multi(src_irb_uchile, 60000, 20)
 
@@ -52,7 +52,7 @@ const fetchImage = async (url, modifiedAfter, modifiedBefore) => {
 }
 
 // Satellite images
-const src_fy_geostationary = async (timestamp) => {
+const src_fy_geostationary = (type) => async (timestamp) => {
   timestamp -= timestamp % (60 * 60000)
   const date = new Date(timestamp)
   const dateStr =
@@ -60,9 +60,11 @@ const src_fy_geostationary = async (timestamp) => {
     (date.getUTCMonth() + 1).toString().padStart(2, '0') +
     date.getUTCDate().toString().padStart(2, '0')
   const hourStr = date.getUTCHours().toString().padStart(2, '0')
-  const payload = await fetchImage(`https://img.nsmc.org.cn/CLOUDIMAGE/GEOS/MOS/IRX/PIC/GBAL/${dateStr}/GEOS_IMAGR_GBAL_L2_MOS_IRX_GLL_${dateStr}_${hourStr}00_10KM_MS.jpg`)
+  const payload = await fetchImage(`https://img.nsmc.org.cn/CLOUDIMAGE/GEOS/MOS/${type}/PIC/GBAL/${dateStr}/GEOS_IMAGR_GBAL_L2_MOS_${type}_GLL_${dateStr}_${hourStr}00_10KM_MS.jpg`)
   return payload
 }
+const src_fy_geostationary_ir = src_fy_geostationary('IRX')
+const src_fy_geostationary_wv = src_fy_geostationary('WVX')
 const src_fy4b_disk = async (timestamp) => {
   timestamp -= timestamp % (15 * 60000)
   const date = new Date(timestamp)
@@ -133,18 +135,52 @@ const src_meteosat_eumetsat = (type) => async (timestamp) => {
 const src_meteosat_ir039 = src_meteosat_eumetsat('IR039')
 const src_meteosat_ir108 = src_meteosat_eumetsat('IR108')
 
-const sources = {
+const src_imd = (type) => async (timestamp) => {
+  timestamp -= timestamp * (15 * 60000)
+  return await fetchImage(`http://satellite.imd.gov.in/imgr/globe_${type}.jpg`,
+    new Date(timestamp),
+    new Date(timestamp + 30 * 60000))
+}
+const src_imd_ir1 = src_imd('ir1')
+const src_imd_mp = src_imd('mp')
+
+const src_sdo = (type) => async () => {
+  return await fetchImage(`https://sdo.gsfc.nasa.gov/assets/img/latest/latest_1024_${type}.jpg`)
+}
+const src_sdo_193 = src_sdo('0193')
+// const src_imd_ir1 = () => fetchImage(`http://satellite.imd.gov.in/imgr/globe_ir1.jpg`)
+// const src_imd_mp = () => fetchImage(`http://satellite.imd.gov.in/imgr/globe_mp.jpg`)
+
+const miscSources = {
   'drand': src_drand_m,
   'NIST beacon': src_irb_nist_m,
   'INMETRO beacon': src_irb_inmetro_br_m,
   'UChile beacon': src_irb_uchile_m,
-  'FY Geostationary IR 10.8u': src_fy_geostationary,
+  'SDO/AIA 193': src_sdo_193,
+}
+let miscSourcesNext = null
+const miscSourcesRetrieve = async (timestampRef) => {
+  const results = (await Promise.allSettled(
+    Object.entries(miscSources).map(([_, fn]) => fn(timestampRef))
+  )).map((result) => result.status === 'fulfilled' ? result.value : (console.log(result.reason), null))
+  console.log('misc', results)
+  return results[0]
+}
+
+const miscSourcesLast = async () => miscSourcesNext
+
+const sources = {
+  'FY Geostationary IR 10.8u': src_fy_geostationary_ir,
+  // 'FY Geostationary WV 7u': src_fy_geostationary_wv,
   // 'FY-4B Geo Color': (timestamp) => src_fy4b_disk(timestamp - 30*60000),
   'GOES-18 GeoColor': src_goes18_noaa,
   'Himawari-9 IR B13': src_himawari_b13,
   'Himawari-9 True Color Reproduction': src_himawari_trm,
   'Meteosat IR 0.39u': src_meteosat_ir039,
   'Meteosat IR 10.8u': src_meteosat_ir108,
+  'INSAT-3D IR1 10.8u': src_imd_ir1,
+  'INSAT-3D TIR BT': src_imd_mp,
+  '0. Miscellaneous': miscSourcesLast,
 }
 const current = {}
 
@@ -202,14 +238,34 @@ const clearCurrent = () => {
   }
 }
 
-const checkUpdate = async () => {
+let currentFinalizedDigest = null
+
+const checkUpdate = async (finalize) => {
+  if (currentFinalizedDigest !== null) return
   console.log('checking')
   let timestamp = Date.now()
   timestamp -= timestamp % (60 * 60000)
-  const rejects = await tryUpdateCurrent(timestamp)
+  const rejects = Object.entries(await tryUpdateCurrent(timestamp))
   console.log('rejects', rejects)
-  console.log('digest', digestCurrent())
+  if (finalize || rejects.length === 0) {
+    currentFinalizedDigest = digestCurrent()
+    console.log('finalized!', currentFinalizedDigest)
+    if (rejects.length > 0) console.log(rejects)
+  }
 }
+const initializeUpdate = async () => {
+  clearCurrent()
+  currentFinalizedDigest = null
+  let timestamp = Date.now()
+  timestamp -= timestamp % (60 * 60000)
+  miscSourcesNext = await miscSourcesRetrieve(timestamp)
+  await checkUpdate()
+}
+if (0) {
 await checkUpdate()
 // --unstable-cron
-Deno.cron('Check updates', '*/5 * * * *', checkUpdate)
+Deno.cron('Initialize updates', '0 * * * *', initializeUpdate)
+Deno.cron('Check updates', '5,29/5 * * * *', () => checkUpdate(false))
+Deno.cron('Finalize updates', '30 * * * *', () => checkUpdate(true))
+}
+await initializeUpdate()
