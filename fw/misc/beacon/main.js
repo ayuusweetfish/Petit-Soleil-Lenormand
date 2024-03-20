@@ -1,4 +1,5 @@
 import { decodeHex } from 'https://deno.land/std@0.220.1/encoding/hex.ts'
+import { sha3_512 } from 'npm:@noble/hashes@1.3.0/sha3'
 import { keccakprg } from 'npm:@noble/hashes@1.3.0/sha3-addons'
 
 // Beacons
@@ -151,6 +152,31 @@ const src_sdo_193 = src_sdo('0193')
 // const src_imd_ir1 = () => fetchImage(`http://satellite.imd.gov.in/imgr/globe_ir1.jpg`)
 // const src_imd_mp = () => fetchImage(`http://satellite.imd.gov.in/imgr/globe_mp.jpg`)
 
+const hashAllEntries = (entries) => {
+  entries.sort((a, b) => a[0].localeCompare(b[0]))
+  const prng = keccakprg(510)
+  for (const [key, value] of entries) {
+    console.log(key, value.length, value.slice(0, 16))
+    prng.feed(value)
+  }
+  const result = prng.fetch(4096)
+  let curIndex = 0
+  for (const [key, value] of entries) {
+    for (let i = 0; i < value.length; i += 64) {
+      prng.feed(value.slice(i, i + 64))
+      const digestBlock = prng.fetch(64)
+      curIndex += 1
+      for (let i = 0; i < 64; i++) {
+        result[curIndex] ^= digestBlock[i]
+        curIndex = (curIndex + 1) % 4096
+      }
+    }
+  }
+  const whiten = prng.fetch(4096)
+  for (let i = 0; i < 4096; i++) result[4095 - i] ^= whiten[i]
+  return result
+}
+
 const miscSources = {
   'drand': src_drand_m,
   'NIST beacon': src_irb_nist_m,
@@ -158,16 +184,22 @@ const miscSources = {
   'UChile beacon': src_irb_uchile_m,
   'SDO/AIA 193': src_sdo_193,
 }
-let miscSourcesNext = null
+let miscSourcesBlock = new Uint8Array(4096)
+crypto.getRandomValues(miscSourcesBlock)
 const miscSourcesRetrieve = async (timestampRef) => {
-  const results = (await Promise.allSettled(
-    Object.entries(miscSources).map(([_, fn]) => fn(timestampRef))
-  )).map((result) => result.status === 'fulfilled' ? result.value : (console.log(result.reason), null))
-  console.log('misc', results)
-  return results[0]
+  const results = await Promise.allSettled(
+    Object.entries(miscSources).map(([key, fn]) => (async () => [key, await fn(timestampRef)])())
+  )
+  const entries = results
+    // .map((result) => result.status === 'fulfilled' ? result.value : undefined)
+    .map((result) => result.value)
+    .filter((x) => x !== undefined)
+  const digestBlock = hashAllEntries(entries)
+  const localRand = new Uint8Array(4096)
+  crypto.getRandomValues(localRand)
+  for (let i = 0; i < 4096; i++) digestBlock[i] ^= localRand[i]
+  return digestBlock
 }
-
-const miscSourcesLast = async () => miscSourcesNext
 
 const sources = {
   'FY Geostationary IR 10.8u': src_fy_geostationary_ir,
@@ -180,7 +212,6 @@ const sources = {
   'Meteosat IR 10.8u': src_meteosat_ir108,
   'INSAT-3D IR1 10.8u': src_imd_ir1,
   'INSAT-3D TIR BT': src_imd_mp,
-  '0. Miscellaneous': miscSourcesLast,
 }
 const current = {}
 
@@ -209,28 +240,7 @@ const tryUpdateCurrent = async (timestamp) => {
 }
 const digestCurrent = () => {
   const entries = Object.entries(current)
-  entries.sort((a, b) => a[0].localeCompare(b[0]))
-  const prng = keccakprg(510)
-  for (const [key, value] of entries) {
-    // console.log(key)
-    prng.feed(value)
-  }
-  const result = prng.fetch(4096)
-  let curIndex = 0
-  for (const [key, value] of entries) {
-    for (let i = 0; i < value.length; i += 64) {
-      prng.feed(value.slice(i, i + 64))
-      const digestBlock = prng.fetch(64)
-      curIndex += 1
-      for (let i = 0; i < 64; i++) {
-        result[curIndex] ^= digestBlock[i]
-        curIndex = (curIndex + 1) % 4096
-      }
-    }
-  }
-  const whiten = prng.fetch(4096)
-  for (let i = 0; i < 4096; i++) result[4095 - i] ^= whiten[i]
-  return result
+  return hashAllEntries(entries)
 }
 const clearCurrent = () => {
   for (const key of Object.getOwnPropertyNames(current)) {
@@ -240,25 +250,37 @@ const clearCurrent = () => {
 
 let currentFinalizedDigest = null
 
+const currentPulseTimestamp = () => {
+  const timestamp = Date.now() - 15 * 60000
+  return timestamp - timestamp % (60 * 60000)
+}
+
 const checkUpdate = async (finalize) => {
   if (currentFinalizedDigest !== null) return
   console.log('checking')
-  let timestamp = Date.now()
-  timestamp -= timestamp % (60 * 60000)
+  const timestamp = currentPulseTimestamp()
   const rejects = Object.entries(await tryUpdateCurrent(timestamp))
-  console.log('rejects', rejects)
   if (finalize || rejects.length === 0) {
     currentFinalizedDigest = digestCurrent()
-    console.log('finalized!', currentFinalizedDigest)
     if (rejects.length > 0) console.log(rejects)
+
+    // Mix in miscellaneous sources
+    for (let i = 0; i < 4096; i++)
+      currentFinalizedDigest[i] ^= miscSourcesBlock[i]
+
+    const miscSourcesNext = await miscSourcesRetrieve(timestamp)
+    const miscSourcesNextHash = sha3_512(miscSourcesNext)
+
+    console.log('finalized!', currentFinalizedDigest, miscSourcesBlock, miscSourcesNextHash)
+
+    miscSourcesBlock = miscSourcesNext
+  } else {
+    console.log('rejects', rejects)
   }
 }
 const initializeUpdate = async () => {
   clearCurrent()
   currentFinalizedDigest = null
-  let timestamp = Date.now()
-  timestamp -= timestamp % (60 * 60000)
-  miscSourcesNext = await miscSourcesRetrieve(timestamp)
   await checkUpdate()
 }
 if (0) {
