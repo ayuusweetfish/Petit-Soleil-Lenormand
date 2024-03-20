@@ -1,6 +1,29 @@
-import { decodeHex } from 'https://deno.land/std@0.220.1/encoding/hex.ts'
-import { sha3_512 } from 'npm:@noble/hashes@1.3.0/sha3'
+import { encodeHex, decodeHex } from 'https://deno.land/std@0.220.1/encoding/hex.ts'
+import { sha3_224, sha3_512 } from 'npm:@noble/hashes@1.3.0/sha3'
 import { keccakprg } from 'npm:@noble/hashes@1.3.0/sha3-addons'
+
+// --unstable-kv
+const isOnDenoDeploy = (Deno.env.get('DENO_DEPLOYMENT_ID') !== undefined)
+const kv = await Deno.openKv(isOnDenoDeploy ? undefined : 'kv.sqlite')
+
+let lastMonotonicDateStr = null
+let lastMonotonicCount = 0
+const monotonicDate = () => {
+  const s = (new Date()).toISOString()
+  if (s === lastMonotonicDateStr) {
+    lastMonotonicCount++
+  } else {
+    lastMonotonicDateStr = s
+    lastMonotonicCount = 0
+  }
+  return s + ',' + lastMonotonicCount.toString().padStart(3, '0')
+}
+// for (let i = 0; i < 1000; i++) console.log(monotonicDate())
+const persistLog = (s) => {
+  const dateStr = monotonicDate()
+  kv.set(['log', dateStr], s)
+  console.log(dateStr, s)
+}
 
 // Beacons
 const src_drand = async (timestamp) => {
@@ -34,7 +57,7 @@ const src_irb_inmetro_br_m = src_beacon_multi(src_irb_inmetro_br, 60000, 20)
 const src_irb_uchile_m = src_beacon_multi(src_irb_uchile, 60000, 20)
 
 const fetchImage = async (url, modifiedAfter, modifiedBefore) => {
-  console.log(url)
+  console.log('fetch', url)
   const resp = await fetch(url)
   if (modifiedAfter !== undefined) {
     if (!resp.headers.has('Last-Modified')) {
@@ -137,7 +160,7 @@ const src_meteosat_ir039 = src_meteosat_eumetsat('IR039')
 const src_meteosat_ir108 = src_meteosat_eumetsat('IR108')
 
 const src_imd = (type) => async (timestamp) => {
-  timestamp -= timestamp * (15 * 60000)
+  timestamp -= timestamp % (15 * 60000)
   return await fetchImage(`http://satellite.imd.gov.in/imgr/globe_${type}.jpg`,
     new Date(timestamp),
     new Date(timestamp + 30 * 60000))
@@ -156,7 +179,9 @@ const hashAllEntries = (entries) => {
   entries.sort((a, b) => a[0].localeCompare(b[0]))
   const prng = keccakprg(510)
   for (const [key, value] of entries) {
-    console.log(key, value.length, value.slice(0, 16))
+    persistLog(key + '\t' +
+      (value.length <= 32 ? encodeHex(value) :
+      `${value.length},SHA-3-224=${encodeHex(sha3_224(value))}`))
     prng.feed(value)
   }
   const result = prng.fetch(4096)
@@ -177,6 +202,8 @@ const hashAllEntries = (entries) => {
   return result
 }
 
+// ====== Miscellaneous sources for local randomness ======
+
 const miscSources = {
   'drand': src_drand_m,
   'NIST beacon': src_irb_nist_m,
@@ -184,9 +211,7 @@ const miscSources = {
   'UChile beacon': src_irb_uchile_m,
   'SDO/AIA 193': src_sdo_193,
 }
-let miscSourcesBlock = new Uint8Array(4096)
-crypto.getRandomValues(miscSourcesBlock)
-const miscSourcesRetrieve = async (timestampRef) => {
+const miscSourcesConstruct = async (timestampRef) => {
   const results = await Promise.allSettled(
     Object.entries(miscSources).map(([key, fn]) => (async () => [key, await fn(timestampRef)])())
   )
@@ -200,6 +225,31 @@ const miscSourcesRetrieve = async (timestampRef) => {
   for (let i = 0; i < 4096; i++) digestBlock[i] ^= localRand[i]
   return digestBlock
 }
+
+const miscSourceBlockForTimestamp = async (timestamp, construct) => {
+  // Try to load from KV
+  const miscSourcesBlockSaved = (await kv.get(['misc-block', timestamp])).value
+  if (miscSourcesBlockSaved) {
+    return decodeHex(miscSourcesBlockSaved)
+  } else {
+    persistLog(`Misc entropy block for ${timestamp} not saved, ${construct ? 'building' : 'randomly generating'}`)
+    let miscSourcesBlock
+    if (construct) {
+      miscSourcesBlock = await miscSourcesConstruct(timestamp)
+    } else {
+      miscSourcesBlock = new Uint8Array(4096)
+      crypto.getRandomValues(miscSourcesBlock)
+    }
+    await kv.set(['misc-block', timestamp], encodeHex(miscSourcesBlock))
+    return miscSourcesBlock
+  }
+}
+const miscSourceBlockHashForTimestamp = async (timestamp) => {
+  const block = await miscSourceBlockForTimestamp(timestamp, true)
+  return sha3_512(block)
+}
+
+// ====== Public sources ======
 
 const sources = {
   'FY Geostationary IR 10.8u': src_fy_geostationary_ir,
@@ -233,7 +283,7 @@ const tryUpdateCurrent = async (timestamp) => {
     if (result.status === 'fulfilled') {
       if (result.value !== null) current[key] = result.value
     } else {
-      rejects[key] = result.reason
+      rejects[key] = result.reason.message
     }
   }
   return rejects
@@ -251,13 +301,13 @@ const clearCurrent = () => {
 let currentFinalizedDigest = null
 
 const currentPulseTimestamp = () => {
-  const timestamp = Date.now() - 15 * 60000
+  const timestamp = Date.now() + 3 * 60000
   return timestamp - timestamp % (60 * 60000)
 }
 
 const checkUpdate = async (finalize) => {
   if (currentFinalizedDigest !== null) return
-  console.log('checking')
+  persistLog('checking')
   const timestamp = currentPulseTimestamp()
   const rejects = Object.entries(await tryUpdateCurrent(timestamp))
   if (finalize || rejects.length === 0) {
@@ -265,17 +315,17 @@ const checkUpdate = async (finalize) => {
     if (rejects.length > 0) console.log(rejects)
 
     // Mix in miscellaneous sources
+    const miscSourcesBlock = await miscSourceBlockForTimestamp(timestamp)
     for (let i = 0; i < 4096; i++)
       currentFinalizedDigest[i] ^= miscSourcesBlock[i]
 
-    const miscSourcesNext = await miscSourcesRetrieve(timestamp)
-    const miscSourcesNextHash = sha3_512(miscSourcesNext)
-
-    console.log('finalized!', currentFinalizedDigest, miscSourcesBlock, miscSourcesNextHash)
-
-    miscSourcesBlock = miscSourcesNext
+    const miscSourcesNextHash = await miscSourceBlockHashForTimestamp(timestamp + 60 * 60000)
+    persistLog('finalized!' + ' ' +
+      encodeHex(currentFinalizedDigest).substring(0, 16) + ' ' +
+      encodeHex(miscSourcesBlock).substring(0, 16) + ' ' +
+      encodeHex(miscSourcesNextHash))
   } else {
-    console.log('rejects', rejects)
+    persistLog('rejects ' + rejects.map(([key, message]) => `<${key}>: ${message}`).join('; '))
   }
 }
 const initializeUpdate = async () => {
@@ -283,11 +333,9 @@ const initializeUpdate = async () => {
   currentFinalizedDigest = null
   await checkUpdate()
 }
-if (0) {
-await checkUpdate()
+
+await initializeUpdate()
 // --unstable-cron
 Deno.cron('Initialize updates', '0 * * * *', initializeUpdate)
-Deno.cron('Check updates', '5,29/5 * * * *', () => checkUpdate(false))
-Deno.cron('Finalize updates', '30 * * * *', () => checkUpdate(true))
-}
-await initializeUpdate()
+Deno.cron('Check updates', '5,44/5 * * * *', () => checkUpdate(false))
+Deno.cron('Finalize updates', '45 * * * *', () => checkUpdate(true))
