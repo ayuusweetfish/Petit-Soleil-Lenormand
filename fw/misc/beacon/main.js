@@ -216,6 +216,7 @@ const miscSources = {
   'SDO/AIA 193': src_sdo_193,
 }
 const miscSourcesConstruct = async (timestampRef) => {
+  timestampRef -= 60 * 60000
   const results = await Promise.allSettled(
     Object.entries(miscSources).map(([key, fn]) => fn(timestampRef))
   )
@@ -332,6 +333,7 @@ const checkUpdate = async (finalize) => {
       encodeHex(currentFinalizedDigest).substring(0, 16) + ' ' +
       encodeHex(miscSourcesBlock).substring(0, 16) + ' ' +
       encodeHex(miscSourcesNextHash))
+    await kv.set(['output', timestamp], encodeHex(currentFinalizedDigest))
   } else {
     persistLog('rejects ' + rejects.map(([key, message]) => `<${key}>: ${message}`).join('; '))
   }
