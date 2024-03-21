@@ -478,6 +478,10 @@ Deno.serve({
     } else if (url.pathname.match(/^(\/[0-9]+)\/(short|plain)$/)) {
       const [_, timestamp, format] = url.pathname.match(/^\/([0-9]+)\/(short|plain)$/)
       return savedPulseResp(+timestamp, format)
+    } else if (url.pathname.match(/^\/(|short|plain)$/)) {
+      const currentTimestamp = currentPulseTimestamp(true) - 60 * 60000
+      const format = url.pathname.match(/^\/(|short|plain)$/)[1]
+      return savedPulseResp(currentTimestamp, format)
     }
   } else {
     return new Response('Unsupported method', { status: 405 })
