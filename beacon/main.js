@@ -168,6 +168,35 @@ const src_imd = (type) => async (timestamp) => {
 const src_imd_ir1 = src_imd('ir1')
 const src_imd_mp = src_imd('mp')
 
+const src_gk2a = (type) => async (timestamp) => {
+  timestamp -= timestamp % (10 * 60000)
+  const date = new Date(timestamp)
+  const yearMonthStr =
+    date.getUTCFullYear().toString() +
+    (date.getUTCMonth() + 1).toString().padStart(2, '0')
+  const dayStr = date.getUTCDate().toString().padStart(2, '0')
+  const hourStr = date.getUTCHours().toString().padStart(2, '0')
+  const minuteStr = date.getUTCMinutes().toString().padStart(2, '0')
+  return await fetchImage(`https://nmsc.kma.go.kr/IMG/GK2A/AMI/PRIMARY/L1B/COMPLETE/FD/${yearMonthStr}/${dayStr}/${hourStr}/gk2a_ami_le1b_${type}_fd020ge_${yearMonthStr}${dayStr}${hourStr}${minuteStr}.srv.png`)
+}
+const src_gk2a_rgb_daynight = src_gk2a('rgb-daynight')
+const src_gk2a_ir087 = src_gk2a('ir087')
+
+const src_electro_l = (type) => async (timestamp) => {
+  timestamp -= timestamp % (30 * 60000)
+  timestamp += 3 * 60 * 60000   // In UTC+3
+  const date = new Date(timestamp)
+  const dateTimeStr =
+    date.getUTCFullYear().toString() +
+    (date.getUTCMonth() + 1).toString().padStart(2, '0') +
+    date.getUTCDate().toString().padStart(2, '0') + '-' +
+    date.getUTCHours().toString().padStart(2, '0') +
+    date.getUTCMinutes().toString().padStart(2, '0')
+  return await fetchImage(`http://electro.ntsomz.ru/i/${type}/${dateTimeStr}.jpg`)
+}
+const src_electro_l2 = src_electro_l('splash')
+const src_electro_l3 = src_electro_l('splash_l3')
+
 const src_sdo = (type) => async (timestamp) => {
   return await fetchImage(`https://sdo.gsfc.nasa.gov/assets/img/latest/latest_1024_${type}.jpg`,
     new Date(timestamp - 20 * 60000),
@@ -274,6 +303,10 @@ const sources = {
   'Meteosat IR 10.8u': src_meteosat_ir108,
   'INSAT-3D IR1 10.8u': src_imd_ir1,
   'INSAT-3D TIR BT': src_imd_mp,
+  'GK2A RGB DAYNIGHT': src_gk2a_rgb_daynight,
+  'GK2A IR 8.7u': src_gk2a_ir087,
+  'Electro-L 2': (timestamp) => src_electro_l2(timestamp - 30*60000),
+  'Electro-L 3': (timestamp) => src_electro_l3(timestamp - 30*60000),
 }
 const current = {}
 
