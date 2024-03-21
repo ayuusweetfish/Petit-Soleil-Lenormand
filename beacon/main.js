@@ -168,8 +168,10 @@ const src_imd = (type) => async (timestamp) => {
 const src_imd_ir1 = src_imd('ir1')
 const src_imd_mp = src_imd('mp')
 
-const src_sdo = (type) => async () => {
-  return await fetchImage(`https://sdo.gsfc.nasa.gov/assets/img/latest/latest_1024_${type}.jpg`)
+const src_sdo = (type) => async (timestamp) => {
+  return await fetchImage(`https://sdo.gsfc.nasa.gov/assets/img/latest/latest_1024_${type}.jpg`,
+    new Date(timestamp - 20 * 60000),
+    new Date(timestamp + 20 * 60000))
 }
 const src_sdo_193 = src_sdo('0193')
 // const src_imd_ir1 = () => fetchImage(`http://satellite.imd.gov.in/imgr/globe_ir1.jpg`)
@@ -315,8 +317,8 @@ const currentPulseTimestamp = () => {
   return timestamp - timestamp % (60 * 60000)
 }
 
-const checkUpdate = async (finalize) => {
-  const timestamp = currentPulseTimestamp()
+const checkUpdate = async (finalize, timestamp) => {
+  timestamp = timestamp || currentPulseTimestamp()
   if (currentFinalizedDigest !== null && currentFinalizedDigestTimestamp === timestamp)
     return
 
@@ -358,11 +360,11 @@ const checkUpdate = async (finalize) => {
     persistLog('rejects ' + rejects.map(([key, message]) => `<${key}>: ${message}`).join('; '))
   }
 }
-const initializeStates = async () => {
+const initializeStates = async (timestamp) => {
   clearCurrent()
   currentFinalizedDigest = null
   // Try loading
-  const timestamp = currentPulseTimestamp()
+  timestamp = timestamp || currentPulseTimestamp()
   const savedOutputStr = (await kv.get(['output', timestamp])).value
   if (savedOutputStr) {
     currentFinalizedDigest = decodeHex(savedOutputStr)
@@ -374,6 +376,16 @@ const initializeUpdate = async () => {
   await initializeStates()
   await checkUpdate()
 }
+
+/*
+for (let t  = +new Date('2024-03-20T04:00:00.000Z');
+         t <= +new Date('2024-03-21T02:00:00.000Z');
+         t += 60 * 60000) {
+  await initializeStates(t)
+  await checkUpdate(true, t)
+}
+Deno.exit(0)
+*/
 
 await initializeStates()
 // --unstable-cron
