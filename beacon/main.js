@@ -181,12 +181,12 @@ const zip = (...as) => [...as[0]].map((_, i) => as.map((a) => a[i]))
 
 const hashAllEntries = (entries) => {
   entries.sort((a, b) => a[0].localeCompare(b[0]))
+  const breakdown = []
   const prng = keccakprg(510)
   for (const [key, value] of entries) {
-    persistLog(key + '\t' +
-      (value.length <= 32 ? encodeHex(value) :
-      `${value.length},SHA-3-224=${encodeHex(sha3_224(value))}`))
+    persistLog(`${key}\t${value.length},SHA-3-224=${encodeHex(sha3_224(value))}`)
     prng.feed(value)
+    breakdown.push([key, value.length, encodeHex(sha3_224(value))])
   }
   const result = prng.fetch(4096)
   let curIndex = 0
@@ -203,7 +203,7 @@ const hashAllEntries = (entries) => {
   }
   const whiten = prng.fetch(4096)
   for (let i = 0; i < 4096; i++) result[4095 - i] ^= whiten[i]
-  return result
+  return [result, breakdown]
 }
 
 // ====== Miscellaneous sources for local randomness ======
@@ -229,7 +229,7 @@ const miscSourcesConstruct = async (timestampRef) => {
   const entries = resultsKeyed
     .filter(([key, result]) => result.status === 'fulfilled')
     .map(([key, result]) => [key, result.value])
-  const digestBlock = hashAllEntries(entries)
+  const [digestBlock, _] = hashAllEntries(entries)
   const localRand = new Uint8Array(4096)
   crypto.getRandomValues(localRand)
   for (let i = 0; i < 4096; i++) digestBlock[i] ^= localRand[i]
@@ -320,8 +320,10 @@ const checkUpdate = async (finalize) => {
   const timestamp = currentPulseTimestamp()
   const rejects = Object.entries(await tryUpdateCurrent(timestamp))
   if (finalize || rejects.length === 0) {
-    currentFinalizedDigest = digestCurrent()
     if (rejects.length > 0) console.log(rejects)
+
+    const [digest, breakdown] = digestCurrent()
+    currentFinalizedDigest = digest
 
     // Mix in miscellaneous sources
     const miscSourcesBlock = await miscSourceBlockForTimestamp(timestamp)
@@ -343,6 +345,11 @@ const checkUpdate = async (finalize) => {
       encodeHex(miscSourcesBlock).substring(0, 16) + ' ' +
       encodeHex(miscSourcesNextHash))
     await kv.set(['output', timestamp], encodeHex(currentFinalizedDigest))
+
+    const breakdownStr = breakdown.map(
+      ([key, length, digest]) => `${key} ${length} ${digest}`
+    ).join(';')
+    await kv.set(['output', timestamp, 'breakdown'], breakdownStr)
   } else {
     persistLog('rejects ' + rejects.map(([key, message]) => `<${key}>: ${message}`).join('; '))
   }
@@ -354,8 +361,10 @@ const initializeUpdate = async () => {
 }
 
 // No need to initialize, as the startup state is a valid initialized one
-// await initializeUpdate()
+await initializeUpdate()
 // --unstable-cron
+/*
 Deno.cron('Initialize updates', '0 * * * *', initializeUpdate)
 Deno.cron('Check updates', '5-44/5 * * * *', () => checkUpdate(false))
 Deno.cron('Finalize updates', '45 * * * *', () => checkUpdate(true))
+*/
