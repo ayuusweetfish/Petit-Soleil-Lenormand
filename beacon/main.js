@@ -468,7 +468,7 @@ Deno.exit(0)
 */
 
 await initializeStates()
-await checkUpdate()
+// await checkUpdate()
 // --unstable-cron
 Deno.cron('Initialize updates', '0 * * * *', initializeUpdate)
 Deno.cron('Check updates', '5-44/5 * * * *', () => checkUpdate(false))
@@ -479,17 +479,23 @@ const jsonResp = (o) =>
 
 const savedPulseResp = async (timestamp, format) => {
   timestamp -= timestamp % (60 * 60000)
-  if (timestamp > currentPulseTimestamp())
+  if (timestamp > currentPulseTimestamp()) {
+    if (format === 'object') throw new Error('Pulse is in the future')
     return new Response('Pulse is in the future', { status: 404 })
+  }
   const output = await loadOutput(timestamp)
-  if (output === undefined)
+  if (output === undefined) {
+    if (format === 'object') throw new Error('Pulse is not recorded')
     return new Response('Pulse is not recorded', { status: 404 })
+  }
   if (format === 'short') return jsonResp({ timestamp, output })
   if (format === 'plain') return new Response(output)
   const details = await loadOutputDetails(timestamp)
   const local = encodeHex(await miscSourceBlockForTimestamp(timestamp))
   const precommit = encodeHex(await miscSourceBlockHashForTimestamp(timestamp + 60 * 60000))
-  return jsonResp({ timestamp, output, details, local, precommit })
+  const obj = { timestamp, output, details, local, precommit }
+  if (format === 'object') return obj
+  return jsonResp(obj)
 }
 
 Deno.serve({
@@ -499,27 +505,24 @@ Deno.serve({
   if (req.method === 'GET') {
     if (url.pathname === '/current') {
       const currentTimestamp = currentPulseTimestamp(true)
+      const currentEntries = JSON.parse((await kv.get(['current'])).value || '[]')
+      const details = await outputDetailsArr(currentEntries)
+      const respObject = {}
       if (currentFinalizedDigest !== null &&
           currentFinalizedDigestTimestamp === currentTimestamp) {
-        return savedPulseResp(currentFinalizedDigestTimestamp)
-      } else {
-        const currentEntries = JSON.parse((await kv.get(['current'])).value || '[]')
-        return jsonResp({
-          timestamp: currentTimestamp,
-          output: null,
-          details: await outputDetailsArr(currentEntries),
-        })
+        Object.assign(respObject, await savedPulseResp(currentTimestamp, 'object'))
       }
-    } else if (url.pathname.match(/^\/[0-9]+$/g)) {
-      const timestamp = +url.pathname.substring(1)
-      return savedPulseResp(timestamp)
-    } else if (url.pathname.match(/^(\/[0-9]+)\/(short|plain)$/)) {
-      const [_, timestamp, format] = url.pathname.match(/^\/([0-9]+)\/(short|plain)$/)
-      return savedPulseResp(+timestamp, format)
+      respObject.timestamp = currentTimestamp
+      respObject.output = respObject.output || null
+      respObject.details = details
+      return jsonResp(respObject)
+    } else if (url.pathname.match(/^\/[0-9]+(|\/short|\/plain)$/)) {
+      const [_, timestamp, format] = url.pathname.match(/^\/([0-9]+)(|\/short|\/plain)$/)
+      return await savedPulseResp(+timestamp, (format || '').substring(1))
     } else if (url.pathname.match(/^\/(|short|plain)$/)) {
       const currentTimestamp = currentPulseTimestamp(true) - 60 * 60000
       const format = url.pathname.match(/^\/(|short|plain)$/)[1]
-      return savedPulseResp(currentTimestamp, format)
+      return await savedPulseResp(currentTimestamp, format)
     }
   } else {
     return new Response('Unsupported method', { status: 405 })
