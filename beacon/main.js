@@ -480,12 +480,12 @@ const jsonResp = (o) =>
 const savedPulseResp = async (timestamp, format) => {
   timestamp -= timestamp % (60 * 60000)
   if (timestamp > currentPulseTimestamp()) {
-    if (format === 'object') throw new Error('Pulse is in the future')
+    if (format === 'object') return null
     return new Response('Pulse is in the future', { status: 404 })
   }
   const output = await loadOutput(timestamp)
   if (output === undefined) {
-    if (format === 'object') throw new Error('Pulse is not recorded')
+    if (format === 'object') return null
     return new Response('Pulse is not recorded', { status: 404 })
   }
   if (format === 'short') return jsonResp({ timestamp, output })
@@ -508,10 +508,7 @@ Deno.serve({
       const currentEntries = JSON.parse((await kv.get(['current'])).value || '[]')
       const details = await outputDetailsArr(currentEntries)
       const respObject = {}
-      if (currentFinalizedDigest !== null &&
-          currentFinalizedDigestTimestamp === currentTimestamp) {
-        Object.assign(respObject, await savedPulseResp(currentTimestamp, 'object'))
-      }
+      Object.assign(respObject, await savedPulseResp(currentTimestamp, 'object'))
       respObject.timestamp = currentTimestamp
       respObject.output = respObject.output || null
       respObject.details = details
