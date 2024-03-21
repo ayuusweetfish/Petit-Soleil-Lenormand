@@ -309,11 +309,40 @@ const clearCurrent = () => {
   }
 }
 
+const loadOutput = async (timestamp) => {
+  const savedOutputStr = (await kv.get(['output', timestamp])).value
+  if (!savedOutputStr) return undefined
+  return savedOutputStr
+}
+const outputDetailsArr = async (entries) => {
+  // entries: [[length (number), digest (string)]]
+  const entriesArr = []
+  const keysArr = Object.keys(sources)
+  keysArr.sort((a, b) => a.localeCompare(b))
+  for (const key of keysArr) {
+    const [length, digest] = entries[key] || [null, null]
+    entriesArr.push({ key, length, digest })
+  }
+  return entriesArr
+}
+const loadOutputDetails = async (timestamp) => {
+  const details = (await kv.get(['output', timestamp, 'breakdown'])).value
+  if (!details) return undefined
+
+  const entries = {}
+  for (const entry of details.match(/[^;]+/g)) {
+    const [_, name, length, digest] =
+      (/^(.+) ([0-9]+) ([0-9a-f]+)$/g).exec(entry)
+    entries[name] = [+length, digest]
+  }
+  return await outputDetailsArr(entries)
+}
+
 let currentFinalizedDigest = null
 let currentFinalizedDigestTimestamp = null
 
-const currentPulseTimestamp = () => {
-  const timestamp = Date.now() + 3 * 60000
+const currentPulseTimestamp = (absolute) => {
+  const timestamp = Date.now() + (absolute ? 0 : 3 * 60000)
   return timestamp - timestamp % (60 * 60000)
 }
 
@@ -365,9 +394,9 @@ const initializeStates = async (timestamp) => {
   currentFinalizedDigest = null
   // Try loading
   timestamp = timestamp || currentPulseTimestamp()
-  const savedOutputStr = (await kv.get(['output', timestamp])).value
-  if (savedOutputStr) {
-    currentFinalizedDigest = decodeHex(savedOutputStr)
+  const output = await loadOutput(timestamp)
+  if (output !== undefined) {
+    currentFinalizedDigest = decodeHex(output)
     currentFinalizedDigestTimestamp = timestamp
     persistLog(`Loaded output block at ${timestamp}`)
   }
@@ -388,7 +417,57 @@ Deno.exit(0)
 */
 
 await initializeStates()
+// await checkUpdate()
 // --unstable-cron
 Deno.cron('Initialize updates', '0 * * * *', initializeUpdate)
 Deno.cron('Check updates', '5-44/5 * * * *', () => checkUpdate(false))
 Deno.cron('Finalize updates', '45 * * * *', () => checkUpdate(true))
+
+const jsonResp = (o) =>
+  new Response(JSON.stringify(o), { headers: { 'Content-Type': 'application/json' } })
+
+const savedPulseResp = async (timestamp) => {
+  timestamp -= timestamp % (60 * 60000)
+  if (timestamp > currentPulseTimestamp())
+    return new Response('Pulse is in the future', { status: 404 })
+  const output = await loadOutput(timestamp)
+  if (output === undefined)
+    return new Response('Pulse is not recorded', { status: 404 })
+  const details = await loadOutputDetails(timestamp)
+  const local = encodeHex(await miscSourceBlockForTimestamp(timestamp))
+  const precommit = encodeHex(await miscSourceBlockHashForTimestamp(timestamp + 60 * 60000))
+  return jsonResp({ timestamp, output, details, local, precommit })
+}
+
+Deno.serve({
+  port: 3321,
+}, async (req, info) => {
+  const url = new URL(req.url)
+  if (req.method === 'GET') {
+    if (url.pathname === '/current') {
+      const currentTimestamp = currentPulseTimestamp(true)
+      if (currentFinalizedDigest !== null &&
+          currentFinalizedDigestTimestamp === currentTimestamp) {
+        return savedPulseResp(currentFinalizedDigestTimestamp)
+      } else {
+        const currentEntries = {}
+        for (const [key, value] of Object.entries(current)) {
+          currentEntries[key] = [
+            value.length,
+            encodeHex(sha3_224(value)),
+          ]
+        }
+        return jsonResp({
+          timestamp: currentTimestamp,
+          details: await outputDetailsArr(currentEntries),
+        })
+      }
+    } else if (url.pathname.match(/^\/[0-9]+$/g)) {
+      const timestamp = +url.pathname.substring(1)
+      return savedPulseResp(timestamp)
+    }
+  } else {
+    return new Response('Unsupported method', { status: 405 })
+  }
+  return new Response('Void space, please return', { status: 404 })
+})
