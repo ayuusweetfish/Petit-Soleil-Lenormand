@@ -327,6 +327,15 @@ const checkUpdate = async (finalize) => {
     const miscSourcesBlock = await miscSourceBlockForTimestamp(timestamp)
     for (let i = 0; i < 4096; i++)
       currentFinalizedDigest[i] ^= miscSourcesBlock[i]
+    // Mix in previous output
+    const previousOutputStr = (await kv.get(['output', timestamp - 60 * 60000])).value
+    if (previousOutputStr) {
+      const previousOutput = decodeHex(previousOutputStr)
+      for (let i = 0; i < 4096; i++)
+        currentFinalizedDigest[i] ^= previousOutput[i]
+    } else {
+      persistLog('previous output not found, not mixing')
+    }
 
     const miscSourcesNextHash = await miscSourceBlockHashForTimestamp(timestamp + 60 * 60000)
     persistLog('finalized!' + ' ' +
