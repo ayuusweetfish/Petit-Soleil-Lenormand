@@ -61,18 +61,20 @@ const fetchImage = async (url, modifiedAfter, modifiedBefore) => {
   const resp = await fetch(url)
   if (modifiedAfter !== undefined) {
     if (!resp.headers.has('Last-Modified')) {
-      throw new Error(`Do not know when last modified`)
+      throw new Error(`Do not know when last modified (${url})`)
     }
     const modifiedAt = new Date(resp.headers.get('Last-Modified'))
     if (modifiedAt < modifiedAfter || modifiedAt > modifiedBefore) {
-      throw new Error(`Modification timestamp ${modifiedAt.toISOString()} not in ${modifiedAfter.toISOString()}/${modifiedBefore.toISOString()}`)
+      throw new Error(`Modification timestamp ${modifiedAt.toISOString()} not in ${modifiedAfter.toISOString()}/${modifiedBefore.toISOString()} (${url})`)
     }
   }
   const payload = await resp.blob()
   if (resp.status >= 400 || !payload.type.startsWith('image/')) {
-    throw new Error(`Received status ${resp.status}, type ${payload.type}`)
+    throw new Error(`Received status ${resp.status}, type ${payload.type} (${url})`)
   }
-  return new Uint8Array(await payload.arrayBuffer())
+  const arr = new Uint8Array(await payload.arrayBuffer())
+  arr._url = url
+  return arr
 }
 
 // Satellite images
@@ -348,7 +350,7 @@ const loadOutput = async (timestamp) => {
   return savedOutputStr
 }
 const outputDetailsArr = async (entries) => {
-  // entries: [[length (number), digest (string), message (string | undefined)]]
+  // entries: [[length (number), digest (string), message or url (string | undefined)]]
   const entriesArr = []
   const keysArr = Object.keys(sources)
   keysArr.sort((a, b) => a.localeCompare(b))
@@ -373,7 +375,6 @@ const loadOutputDetails = async (timestamp) => {
 
 let currentFinalizedDigest = null
 let currentFinalizedDigestTimestamp = null
-let currentRejects = []
 
 const currentPulseTimestamp = (absolute) => {
   const timestamp = Date.now() + (absolute ? 0 : 3 * 60000)
@@ -387,7 +388,7 @@ const checkUpdate = async (finalize, timestamp) => {
 
   persistLog('checking')
   const rejects = Object.entries(await tryUpdateCurrent(timestamp))
-  currentRejects = rejects
+
   if (finalize || rejects.length === 0) {
     if (rejects.length > 0) console.log(rejects)
 
@@ -423,6 +424,21 @@ const checkUpdate = async (finalize, timestamp) => {
   } else {
     persistLog('rejects ' + rejects.map(([key, message]) => `<${key}>: ${message}`).join('; '))
   }
+
+  const currentEntries = {}
+  for (const [key, value] of Object.entries(current)) {
+    currentEntries[key] = [
+      value.length,
+      encodeHex(sha3_224(value)),
+      value._url,
+    ]
+  }
+  for (const [key, message] of rejects) {
+    currentEntries[key] = [
+      null, null, message,
+    ]
+  }
+  await kv.set(['current'], JSON.stringify(currentEntries))
 }
 const initializeStates = async (timestamp) => {
   clearCurrent()
@@ -452,7 +468,7 @@ Deno.exit(0)
 */
 
 await initializeStates()
-// await checkUpdate()
+await checkUpdate()
 // --unstable-cron
 Deno.cron('Initialize updates', '0 * * * *', initializeUpdate)
 Deno.cron('Check updates', '5-44/5 * * * *', () => checkUpdate(false))
@@ -487,18 +503,7 @@ Deno.serve({
           currentFinalizedDigestTimestamp === currentTimestamp) {
         return savedPulseResp(currentFinalizedDigestTimestamp)
       } else {
-        const currentEntries = {}
-        for (const [key, value] of Object.entries(current)) {
-          currentEntries[key] = [
-            value.length,
-            encodeHex(sha3_224(value)),
-          ]
-        }
-        for (const [key, message] of currentRejects) {
-          currentEntries[key] = [
-            null, null, message,
-          ]
-        }
+        const currentEntries = JSON.parse((await kv.get(['current'])).value || '[]')
         return jsonResp({
           timestamp: currentTimestamp,
           output: null,
