@@ -182,7 +182,7 @@ const src_gk2a = (type) => async (timestamp) => {
 const src_gk2a_rgb_daynight = src_gk2a('rgb-daynight')
 const src_gk2a_ir087 = src_gk2a('ir087')
 
-const src_electro_l = (type) => async (timestamp) => {
+const src_elektro_l = (type) => async (timestamp) => {
   timestamp -= timestamp % (30 * 60000)
   timestamp += 3 * 60 * 60000   // In UTC+3
   const date = new Date(timestamp)
@@ -194,8 +194,8 @@ const src_electro_l = (type) => async (timestamp) => {
     date.getUTCMinutes().toString().padStart(2, '0')
   return await fetchImage(`http://electro.ntsomz.ru/i/${type}/${dateTimeStr}.jpg`)
 }
-const src_electro_l2 = src_electro_l('splash')
-const src_electro_l3 = src_electro_l('splash_l3')
+const src_elektro_l2 = src_elektro_l('splash')
+const src_elektro_l3 = src_elektro_l('splash_l3')
 
 const src_sdo = (type) => async (timestamp) => {
   return await fetchImage(`https://sdo.gsfc.nasa.gov/assets/img/latest/latest_1024_${type}.jpg`,
@@ -305,8 +305,8 @@ const sources = {
   'INSAT-3D TIR BT': src_imd_mp,
   'GK2A RGB DAYNIGHT': src_gk2a_rgb_daynight,
   'GK2A IR 8.7u': src_gk2a_ir087,
-  'Electro-L 2': (timestamp) => src_electro_l2(timestamp - 30*60000),
-  'Electro-L 3': (timestamp) => src_electro_l3(timestamp - 30*60000),
+  'Elektro-L 2': (timestamp) => src_elektro_l2(timestamp - 30*60000),
+  'Elektro-L 3': (timestamp) => src_elektro_l3(timestamp - 30*60000),
 }
 const current = {}
 
