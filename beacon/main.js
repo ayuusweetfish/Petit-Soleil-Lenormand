@@ -315,13 +315,13 @@ const loadOutput = async (timestamp) => {
   return savedOutputStr
 }
 const outputDetailsArr = async (entries) => {
-  // entries: [[length (number), digest (string)]]
+  // entries: [[length (number), digest (string), message (string | undefined)]]
   const entriesArr = []
   const keysArr = Object.keys(sources)
   keysArr.sort((a, b) => a.localeCompare(b))
   for (const key of keysArr) {
-    const [length, digest] = entries[key] || [null, null]
-    entriesArr.push({ key, length, digest })
+    const [length, digest, message] = entries[key] || [null, null, undefined]
+    entriesArr.push({ key, length, digest, message })
   }
   return entriesArr
 }
@@ -340,6 +340,7 @@ const loadOutputDetails = async (timestamp) => {
 
 let currentFinalizedDigest = null
 let currentFinalizedDigestTimestamp = null
+let currentRejects = []
 
 const currentPulseTimestamp = (absolute) => {
   const timestamp = Date.now() + (absolute ? 0 : 3 * 60000)
@@ -353,6 +354,7 @@ const checkUpdate = async (finalize, timestamp) => {
 
   persistLog('checking')
   const rejects = Object.entries(await tryUpdateCurrent(timestamp))
+  currentRejects = rejects
   if (finalize || rejects.length === 0) {
     if (rejects.length > 0) console.log(rejects)
 
@@ -417,7 +419,7 @@ Deno.exit(0)
 */
 
 await initializeStates()
-// await checkUpdate()
+await checkUpdate()
 // --unstable-cron
 Deno.cron('Initialize updates', '0 * * * *', initializeUpdate)
 Deno.cron('Check updates', '5-44/5 * * * *', () => checkUpdate(false))
@@ -457,8 +459,14 @@ Deno.serve({
             encodeHex(sha3_224(value)),
           ]
         }
+        for (const [key, message] of currentRejects) {
+          currentEntries[key] = [
+            null, null, message,
+          ]
+        }
         return jsonResp({
           timestamp: currentTimestamp,
+          output: null,
           details: await outputDetailsArr(currentEntries),
         })
       }
