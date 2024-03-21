@@ -332,7 +332,7 @@ const loadOutputDetails = async (timestamp) => {
   const entries = {}
   for (const entry of details.match(/[^;]+/g)) {
     const [_, name, length, digest] =
-      (/^(.+) ([0-9]+) ([0-9a-f]+)$/g).exec(entry)
+      entry.match(/^(.+) ([0-9]+) ([0-9a-f]+)$/)
     entries[name] = [+length, digest]
   }
   return await outputDetailsArr(entries)
@@ -419,7 +419,7 @@ Deno.exit(0)
 */
 
 await initializeStates()
-await checkUpdate()
+// await checkUpdate()
 // --unstable-cron
 Deno.cron('Initialize updates', '0 * * * *', initializeUpdate)
 Deno.cron('Check updates', '5-44/5 * * * *', () => checkUpdate(false))
@@ -428,13 +428,15 @@ Deno.cron('Finalize updates', '45 * * * *', () => checkUpdate(true))
 const jsonResp = (o) =>
   new Response(JSON.stringify(o), { headers: { 'Content-Type': 'application/json' } })
 
-const savedPulseResp = async (timestamp) => {
+const savedPulseResp = async (timestamp, format) => {
   timestamp -= timestamp % (60 * 60000)
   if (timestamp > currentPulseTimestamp())
     return new Response('Pulse is in the future', { status: 404 })
   const output = await loadOutput(timestamp)
   if (output === undefined)
     return new Response('Pulse is not recorded', { status: 404 })
+  if (format === 'short') return jsonResp({ timestamp, output })
+  if (format === 'plain') return new Response(output)
   const details = await loadOutputDetails(timestamp)
   const local = encodeHex(await miscSourceBlockForTimestamp(timestamp))
   const precommit = encodeHex(await miscSourceBlockHashForTimestamp(timestamp + 60 * 60000))
@@ -473,6 +475,9 @@ Deno.serve({
     } else if (url.pathname.match(/^\/[0-9]+$/g)) {
       const timestamp = +url.pathname.substring(1)
       return savedPulseResp(timestamp)
+    } else if (url.pathname.match(/^(\/[0-9]+)\/(short|plain)$/)) {
+      const [_, timestamp, format] = url.pathname.match(/^\/([0-9]+)\/(short|plain)$/)
+      return savedPulseResp(+timestamp, format)
     }
   } else {
     return new Response('Unsupported method', { status: 405 })
