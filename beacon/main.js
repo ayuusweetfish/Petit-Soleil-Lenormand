@@ -184,7 +184,7 @@ const hashAllEntries = (entries) => {
   const breakdown = []
   const prng = keccakprg(510)
   for (const [key, value] of entries) {
-    persistLog(`${key}\t${value.length},SHA-3-224=${encodeHex(sha3_224(value))}`)
+    // persistLog(`${key}\t${value.length},SHA-3-224=${encodeHex(sha3_224(value))}`)
     prng.feed(value)
     breakdown.push([key, value.length, encodeHex(sha3_224(value))])
   }
@@ -308,6 +308,7 @@ const clearCurrent = () => {
 }
 
 let currentFinalizedDigest = null
+let currentFinalizedDigestTimestamp = null
 
 const currentPulseTimestamp = () => {
   const timestamp = Date.now() + 3 * 60000
@@ -315,15 +316,18 @@ const currentPulseTimestamp = () => {
 }
 
 const checkUpdate = async (finalize) => {
-  if (currentFinalizedDigest !== null) return
-  persistLog('checking')
   const timestamp = currentPulseTimestamp()
+  if (currentFinalizedDigest !== null && currentFinalizedDigestTimestamp === timestamp)
+    return
+
+  persistLog('checking')
   const rejects = Object.entries(await tryUpdateCurrent(timestamp))
   if (finalize || rejects.length === 0) {
     if (rejects.length > 0) console.log(rejects)
 
     const [digest, breakdown] = digestCurrent()
     currentFinalizedDigest = digest
+    currentFinalizedDigestTimestamp = timestamp
 
     // Mix in miscellaneous sources
     const miscSourcesBlock = await miscSourceBlockForTimestamp(timestamp)
@@ -354,17 +358,25 @@ const checkUpdate = async (finalize) => {
     persistLog('rejects ' + rejects.map(([key, message]) => `<${key}>: ${message}`).join('; '))
   }
 }
-const initializeUpdate = async () => {
+const initializeStates = async () => {
   clearCurrent()
   currentFinalizedDigest = null
+  // Try loading
+  const timestamp = currentPulseTimestamp()
+  const savedOutputStr = (await kv.get(['output', timestamp])).value
+  if (savedOutputStr) {
+    currentFinalizedDigest = decodeHex(savedOutputStr)
+    currentFinalizedDigestTimestamp = timestamp
+    persistLog(`Loaded output block at ${timestamp}`)
+  }
+}
+const initializeUpdate = async () => {
+  await initializeStates()
   await checkUpdate()
 }
 
-// No need to initialize, as the startup state is a valid initialized one
-await initializeUpdate()
+await initializeStates()
 // --unstable-cron
-/*
 Deno.cron('Initialize updates', '0 * * * *', initializeUpdate)
 Deno.cron('Check updates', '5-44/5 * * * *', () => checkUpdate(false))
 Deno.cron('Finalize updates', '45 * * * *', () => checkUpdate(true))
-*/
