@@ -4,6 +4,19 @@
 #include <stdint.h>
 #include <stdio.h>
 
+#define REV 5
+
+#if REV == 5
+#define PIN_LED_R     GPIO_PIN_6
+#define PIN_LED_G     GPIO_PIN_7
+#define PIN_LED_B     GPIO_PIN_1
+#define PIN_EP_NCS    GPIO_PIN_4
+#define PIN_EP_DCC    GPIO_PIN_1
+#define PIN_EP_NRST   GPIO_PIN_11
+#define PIN_EP_BUSY   GPIO_PIN_12
+#define PIN_BUTTON    GPIO_PIN_2
+#define EXTI_LINE_BUTTON  EXTI_LINE_2
+#elif REV == 4
 #define PIN_LED_R     GPIO_PIN_6
 #define PIN_LED_G     GPIO_PIN_7
 #define PIN_LED_B     GPIO_PIN_1
@@ -12,6 +25,8 @@
 #define PIN_EP_NRST   GPIO_PIN_11
 #define PIN_EP_BUSY   GPIO_PIN_12
 #define PIN_BUTTON    GPIO_PIN_3
+#define EXTI_LINE_BUTTON  EXTI_LINE_3
+#endif
 
 static uint8_t swv_buf[256];
 static size_t swv_buf_ptr = 0;
@@ -201,22 +216,13 @@ int main()
   gpio_init.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOA, &gpio_init);
 
-/*
-  LL_EXTI_InitTypeDef exti_init = (LL_EXTI_InitTypeDef){
-    .Line_0_31 = LL_EXTI_LINE_3,
-    .LineCommand = DISABLE,
-    .Mode = LL_EXTI_MODE_IT,
-    .Trigger = LL_EXTI_TRIGGER_FALLING,
-  };
-  LL_EXTI_Init(&exti_init);
-*/
   EXTI_HandleTypeDef exti_handle = {
     // .Line = 3,
     .RisingCallback = NULL,
     .FallingCallback = NULL,
   };
   EXTI_ConfigTypeDef exti_cfg = {
-    .Line = EXTI_LINE_3,
+    .Line = EXTI_LINE_BUTTON,
     .Mode = EXTI_MODE_INTERRUPT,
     .Trigger = EXTI_TRIGGER_FALLING,
     .GPIOSel = EXTI_GPIOA,
@@ -353,9 +359,23 @@ int main()
   HAL_ADC_PollForConversion(&adc1, 1000);
   uint32_t adc_value = HAL_ADC_GetValue(&adc1);
   HAL_ADC_Stop(&adc1);
-  swv_printf("ADC ref = %lu\n", *VREFINT_CAL_ADDR);
-  swv_printf("ADC = %lu\n", adc_value);
-  // ref = 1667, read = 1550 -> VDD = 1667/1550 * 3 V = 3.226 V
+  swv_printf("ADC VREFINT cal = %lu\n", *VREFINT_CAL_ADDR);
+  swv_printf("ADC VREFINT = %lu\n", adc_value);
+  // VREFINT cal = 1667, VREFINT read = 1550 -> VDD = 1667/1550 * 3 V = 3.226 V
+
+#if REV == 5
+  adc_ch13.Channel = ADC_CHANNEL_0;
+  adc_ch13.Rank = ADC_REGULAR_RANK_1;
+  adc_ch13.SamplingTime = ADC_SAMPLETIME_79CYCLES_5; // Stablize
+  HAL_ADC_ConfigChannel(&adc1, &adc_ch13);
+  HAL_ADC_Start(&adc1);
+  HAL_ADC_PollForConversion(&adc1, 1000);
+  adc_value = HAL_ADC_GetValue(&adc1);
+  HAL_ADC_Stop(&adc1);
+  swv_printf("ADC VCAP = %lu\n", adc_value);
+  // VREFINT cal = 1659, VREFINT read = 1545, VCAP read = 2644
+  // -> VCAP = 2644/1545 * (1659/1545 * 3 V) = 1.838 V
+#endif
 
   // ======== LED Timers ========
   // APB1 = 64 MHz
@@ -461,7 +481,7 @@ print(', '.join('%d' % round(8000*(1+sin(i/N*2*pi))) for i in range(N)))
   gpio_init.Pull = GPIO_NOPULL;
   gpio_init.Speed = GPIO_SPEED_FREQ_HIGH;
   HAL_GPIO_Init(GPIOA, &gpio_init);
-  // Output EP_NCS (PA4), EP_DCC (PA6), EP_NRST (PA11)
+  // Output EP_NCS (PA4), EP_DCC (PA6 (Rev. 4) / PA1 (Rev. 5)), EP_NRST (PA11)
   gpio_init.Pin = PIN_EP_NCS | PIN_EP_DCC | PIN_EP_NRST;
   gpio_init.Mode = GPIO_MODE_OUTPUT_PP;
   gpio_init.Pull = GPIO_NOPULL;
@@ -493,15 +513,20 @@ print(', '.join('%d' % round(8000*(1+sin(i/N*2*pi))) for i in range(N)))
   while (1) {
     TIM14->CCR1 = TIM16->CCR1 = TIM17->CCR1 = 0;
     HAL_SuspendTick();
-    HAL_PWR_EnterSTOPMode(PWR_LOWPOWERREGULATOR_ON, PWR_STOPENTRY_WFI);
+    // HAL_PWR_EnterSTOPMode(PWR_LOWPOWERREGULATOR_ON, PWR_STOPENTRY_WFI);
     HAL_ResumeTick();
-    // while (HAL_GPIO_ReadPin(GPIOA, PIN_BUTTON) == 1)
-    //   sleep_delay(100);
+    while (HAL_GPIO_ReadPin(GPIOA, PIN_BUTTON) == 1)
+      sleep_delay(100);
 
     for (int i = 0; i < N * 3; i++) {
-      TIM14->CCR1 = sin_lut[i % N] / 40;
-      TIM16->CCR1 = sin_lut[(i + N / 3) % N] / 40;
-      TIM17->CCR1 = sin_lut[(i + N * 2 / 3) % N] / 40;
+    #if REV == 5
+      const int SCALE = 2;
+    #elif REV == 4
+      const int SCALE = 40;
+    #endif
+      TIM14->CCR1 = sin_lut[i % N] / SCALE;
+      TIM16->CCR1 = sin_lut[(i + N / 3) % N] / SCALE;
+      TIM17->CCR1 = sin_lut[(i + N * 2 / 3) % N] / SCALE;
       for (int i = 0; i < 100; i++) asm volatile ("nop");
     }
     sleep_delay(500);

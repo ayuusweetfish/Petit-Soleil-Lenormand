@@ -2592,7 +2592,7 @@
     (uuid fff8428b-6c3e-49cd-a76e-4ea504d66b0b)
   )
 
-  (text "PA9 IN" (at 255.905 55.88 0)
+  (text "PA12 IN" (at 255.905 55.88 0)
     (effects (font (size 1.27 1.27) italic) (justify left bottom))
     (uuid 09f196cc-68ce-4430-8fc8-93a04099c40e)
   )
@@ -2600,7 +2600,7 @@
     (effects (font (size 1.27 1.27) italic) (justify right bottom))
     (uuid 25269597-3700-493d-9eca-8a6689d50b72)
   )
-  (text "PA8 PP" (at 255.905 53.34 0)
+  (text "PA11 PP" (at 255.905 53.34 0)
     (effects (font (size 1.27 1.27) italic) (justify left bottom))
     (uuid 3a32e2b9-a070-4103-a1eb-87f7d13d1574)
   )
