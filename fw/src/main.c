@@ -191,11 +191,13 @@ int main()
   __HAL_RCC_GPIOB_CLK_ENABLE();
   GPIO_InitTypeDef gpio_init;
 
-  gpio_init.Pin = PIN_LED_R | PIN_LED_G | PIN_LED_B;
-  gpio_init.Mode = GPIO_MODE_OUTPUT_PP;
-  gpio_init.Pull = GPIO_PULLDOWN;
-  HAL_GPIO_Init(GPIOB, &gpio_init);
-  HAL_GPIO_WritePin(GPIOB, PIN_LED_R | PIN_LED_G | PIN_LED_B, GPIO_PIN_RESET);
+/*
+  gpio_init.Pin = GPIO_PIN_All;
+  gpio_init.Mode = GPIO_MODE_INPUT;
+  gpio_init.Pull = GPIO_NOPULL;
+  gpio_init.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOA, &gpio_init);
+*/
 
   // SWD (PA13, PA14)
   gpio_init.Pin = GPIO_PIN_13 | GPIO_PIN_14;
@@ -204,6 +206,18 @@ int main()
   gpio_init.Pull = GPIO_PULLUP;
   gpio_init.Speed = GPIO_SPEED_FREQ_HIGH;
   HAL_GPIO_Init(GPIOA, &gpio_init);
+
+  gpio_init.Pin = PIN_LED_R | PIN_LED_G | PIN_LED_B;
+  gpio_init.Mode = GPIO_MODE_OUTPUT_PP;
+  gpio_init.Pull = GPIO_PULLDOWN;
+  HAL_GPIO_Init(GPIOB, &gpio_init);
+  HAL_GPIO_WritePin(GPIOB, PIN_LED_R | PIN_LED_G | PIN_LED_B, GPIO_PIN_RESET);
+  while (1) {
+    HAL_GPIO_WritePin(GPIOB, PIN_LED_R | PIN_LED_G | PIN_LED_B, GPIO_PIN_SET); HAL_Delay(500);
+    HAL_GPIO_WritePin(GPIOB, PIN_LED_R | PIN_LED_G | PIN_LED_B, GPIO_PIN_RESET); HAL_Delay(500);
+  }
+  while (1)
+    HAL_PWR_EnterSLEEPMode(PWR_MAINREGULATOR_ON, PWR_SLEEPENTRY_WFI);
 
   // Clocks
   setup_clocks();
@@ -556,6 +570,7 @@ if (1) {
   // Results in unstable display?
   // epd_cmd(0x10, 0x03);
 
+/*
   for (int i = 0; i < 5; i++) {
     TIM16->CCR1 = 2000;
     HAL_Delay(100);
@@ -593,8 +608,9 @@ if (1) {
   epd_waitbusy();
   // Deep sleep
   epd_cmd(0x10, 0x03);
+*/
 }
-    sleep_delay(1500);
+    // sleep_delay(1500);
   }
 
   for (int i = 0; i < 10; i++) {
