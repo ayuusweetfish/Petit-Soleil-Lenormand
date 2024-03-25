@@ -205,8 +205,11 @@ const src_sdo = (type) => async (timestamp) => {
     new Date(timestamp + 20 * 60000))
 }
 const src_sdo_193 = src_sdo('0193')
-// const src_imd_ir1 = () => fetchImage(`http://satellite.imd.gov.in/imgr/globe_ir1.jpg`)
-// const src_imd_mp = () => fetchImage(`http://satellite.imd.gov.in/imgr/globe_mp.jpg`)
+
+const src_random_org = (n) => async (timestamp) => {
+  const content = await (await fetch(`https://www.random.org/cgi-bin/randbyte?nbytes=${n}&format=h`)).text()
+  return new Uint8Array(content.matchAll(/[0-9a-fA-F]{2}/g).map(([w]) => parseInt(w, 16)))
+}
 
 // ====== Common utility functions ======
 
@@ -247,6 +250,7 @@ const miscSources = {
   'INMETRO beacon': src_irb_inmetro_br_m,
   'UChile beacon': src_irb_uchile_m,
   'SDO/AIA 193': src_sdo_193,
+  'RANDOM.ORG': src_random_org(256),
 }
 const miscSourcesConstruct = async (timestampRef) => {
   timestampRef -= 60 * 60000
@@ -307,7 +311,7 @@ const sources = {
   'INSAT-3D TIR BT': src_imd_mp,
   'GK2A RGB DAYNIGHT': src_gk2a_rgb_daynight,
   'GK2A IR 8.7u': src_gk2a_ir087,
-  'Elektro-L 2': (timestamp) => src_elektro_l2(timestamp - 30*60000),
+  'Elektro-L 2': (timestamp) => src_elektro_l2(timestamp - 60*60000),
   'Elektro-L 3': (timestamp) => src_elektro_l3(timestamp - 30*60000),
 }
 const current = {}
