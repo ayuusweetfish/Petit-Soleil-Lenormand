@@ -1,0 +1,6 @@
+pyftsubset ~/Downloads/KingnamMaiyuan1.300.ttf --text=`cat 1.html | perl -CIO -pe 's/[\p{ASCII} \N{U+2500}-\N{U+257F}]//g'` --output-file=KingnamMaiyuan-subset.ttf
+
+FontForge
+Element > Font Info > OS/2 > OS/2 version 4
+Element > Styles > Change Weight > -20
+Element > Transform > Transform > Scale 104 w.r.t. origin
