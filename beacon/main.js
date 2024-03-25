@@ -211,6 +211,11 @@ const src_random_org = (n) => async (timestamp) => {
   return new Uint8Array(content.matchAll(/[0-9a-fA-F]{2}/g).map(([w]) => parseInt(w, 16)))
 }
 
+const src_log_digest = async () => {
+  const content = await (await fetch(`http://log-digest.ayu.land/`)).text()
+  return decodeHex(content.match(/^[0-9a-fA-F]{128}/)[0])
+}
+
 // ====== Common utility functions ======
 
 const zip = (...as) => [...as[0]].map((_, i) => as.map((a) => a[i]))
@@ -251,6 +256,7 @@ const miscSources = {
   'UChile beacon': src_irb_uchile_m,
   'SDO/AIA 193': src_sdo_193,
   'RANDOM.ORG': src_random_org(256),
+  'Ayu.land digest': src_log_digest,
 }
 const miscSourcesConstruct = async (timestampRef) => {
   timestampRef -= 60 * 60000
