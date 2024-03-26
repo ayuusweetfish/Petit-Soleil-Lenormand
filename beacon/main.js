@@ -335,7 +335,6 @@ const tryUpdateCurrent = async (timestamp) => {
   const results = await Promise.allSettled(promises)
   const rejects = {}
   for (const [[key, _], result] of zip(Object.entries(sources), results)) {
-    // console.log(key, result)
     if (result.status === 'fulfilled') {
       if (result.value !== null) current[key] = result.value
     } else {
@@ -374,12 +373,21 @@ const loadOutputDetails = async (timestamp) => {
   const details = (await kv.get(['output', timestamp, 'breakdown'])).value
   if (!details) return undefined
 
+  const messagesStr = (await kv.get(['output', 'messages', timestamp])).value
+  const messages = (messagesStr ? JSON.parse(messagesStr) : undefined)
+
   const entries = {}
   for (const entry of details.match(/[^;]+/g)) {
     const [_, name, length, digest] =
       entry.match(/^(.+) ([0-9]+) ([0-9a-f]+)$/)
-    entries[name] = [+length, digest]
+    const message = (messages ? (messages[name] || null) : undefined)
+    entries[name] = [+length, digest, message]
   }
+  for (const name of Object.keys(sources))
+    if (!entries[name]) {
+      const message = (messages ? (messages[name] || null) : undefined)
+      entries[name] = [null, null, message]
+    }
   return await outputDetailsArr(entries)
 }
 
@@ -400,8 +408,6 @@ const checkUpdate = async (finalize, timestamp) => {
   const rejects = Object.entries(await tryUpdateCurrent(timestamp))
 
   if (finalize || rejects.length === 0) {
-    if (rejects.length > 0) console.log(rejects)
-
     const [digest, breakdown] = digestCurrent()
     currentFinalizedDigest = digest
     currentFinalizedDigestTimestamp = timestamp
@@ -420,19 +426,37 @@ const checkUpdate = async (finalize, timestamp) => {
       persistLog('previous output not found, not mixing')
     }
 
+    const op = kv.atomic()
+
     const miscSourcesNextHash = await miscSourceBlockHashForTimestamp(timestamp + 60 * 60000)
     persistLog('finalized!' + ' ' +
       encodeHex(currentFinalizedDigest).substring(0, 16) + ' ' +
       encodeHex(miscSourcesBlock).substring(0, 16) + ' ' +
       encodeHex(miscSourcesNextHash))
-    await kv.set(['output', timestamp], encodeHex(currentFinalizedDigest))
+    op.set(['output', timestamp], encodeHex(currentFinalizedDigest))
 
     const breakdownStr = breakdown.map(
       ([key, length, digest]) => `${key} ${length} ${digest}`
     ).join(';')
-    await kv.set(['output', timestamp, 'breakdown'], breakdownStr)
+    op.set(['output', timestamp, 'breakdown'], breakdownStr)
+
+    const messages = {}
+    for (const [key, value] of Object.entries(current)) messages[key] = value._url
+    for (const [key, message] of rejects) messages[key] = message
+    op.set(['output', 'messages', timestamp], JSON.stringify(messages))
+
+    // Remove obsolete messages
+    console.log(['output', 'messages', timestamp - (23 * 60 * 60000 + 1)])
+    for await (const { key } of kv.list({
+      prefix: ['output', 'messages'],
+      end: ['output', 'messages', timestamp - (23 * 60 * 60000 + 1)],
+    })) {
+      op.delete(key)
+    }
+
+    await op.commit()
   } else {
-    persistLog('rejects ' + rejects.map(([key, message]) => `<${key}>: ${message}`).join('; '))
+    console.log('rejects ' + rejects.map(([key, message]) => `<${key}>: ${message}`).join('; '))
   }
 
   const currentEntries = {}
