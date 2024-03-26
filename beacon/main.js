@@ -1,6 +1,7 @@
 import { encodeHex, decodeHex } from 'https://deno.land/std@0.220.1/encoding/hex.ts'
 import { sha3_224, sha3_512 } from 'npm:@noble/hashes@1.3.0/sha3'
 import { keccakprg } from 'npm:@noble/hashes@1.3.0/sha3-addons'
+import { serveFile } from 'https://deno.land/std@0.220.1/http/file_server.ts'
 
 // --unstable-kv
 const isOnDenoDeploy = (Deno.env.get('DENO_DEPLOYMENT_ID') !== undefined)
@@ -547,13 +548,27 @@ Deno.serve({
       respObject.output = respObject.output || null
       respObject.details = details
       return jsonResp(respObject)
-    } else if (url.pathname.match(/^\/[0-9]+(|\/short|\/plain)$/)) {
-      const [_, timestamp, format] = url.pathname.match(/^\/([0-9]+)(|\/short|\/plain)$/)
-      return await savedPulseResp(+timestamp, (format || '').substring(1))
-    } else if (url.pathname.match(/^\/(|short|plain)$/)) {
-      const currentTimestamp = currentPulseTimestamp(true) - 60 * 60000
-      const format = url.pathname.match(/^\/(|short|plain)$/)[1]
-      return await savedPulseResp(currentTimestamp, format)
+    }
+    const urlPartsLatest = url.pathname.match(/^\/([0-9]{1,15}|latest)(|\/short|\/plain)$/)
+    if (urlPartsLatest) {
+      let [_, timestamp, format] = urlPartsLatest
+      if (timestamp === 'latest')
+        timestamp = currentPulseTimestamp(true) - 60 * 60000
+      else timestamp = +timestamp
+      return await savedPulseResp(timestamp, (format || '').substring(1))
+    }
+    // Try static files
+    const tryStat = async (path) => {
+      try {
+        return (await Deno.stat(path)).isFile
+      } catch (e) {
+        if (e instanceof Deno.errors.NotFound) return false
+        throw e
+      }
+    }
+    if (url.pathname === '/' || await tryStat('page/' + url.pathname.substring(1))) {
+      const path = (url.pathname === '/' ? 'index.html' : url.pathname.substring(1))
+      return await serveFile(req, 'page/' + path)
     }
   } else {
     return new Response('Unsupported method', { status: 405 })
