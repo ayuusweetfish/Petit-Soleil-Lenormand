@@ -1,4 +1,8 @@
-pyftsubset ~/Downloads/KingnamMaiyuan1.300.ttf --text=`cat 1.html | perl -CIO -pe 's/[\p{ASCII} \N{U+2500}-\N{U+257F}]//g'` --output-file=KingnamMaiyuan-subset.ttf
+pyftsubset ~/Downloads/ChillYunmoGothicMedium.otf --text=`cat index.html | perl -CIO -pe 's/[\p{ASCII} \N{U+2500}-\N{U+257F}]//g'` --output-file=ChillYunmoGothicMedium_subset.ttf
+
+Element > Transform > Transform > Scale 110x100 w.r.t. origin
+
+pyftsubset ~/Downloads/KingnamMaiyuan1.300.ttf --text=`cat index.html | perl -CIO -pe 's/[\p{ASCII} \N{U+2500}-\N{U+257F}]//g'` --output-file=KingnamMaiyuan-subset.ttf
 
 FontForge
 Element > Font Info > OS/2 > OS/2 version 4
