@@ -217,6 +217,11 @@ const src_log_digest = async () => {
   return decodeHex(content.match(/^[0-9a-fA-F]{128}/)[0])
 }
 
+const src_opensky_network = async (timestamp) => {
+  const payload = await (await fetch(`https://opensky-network.org/api/states/all`)).blob()
+  return new Uint8Array(await payload.arrayBuffer())
+}
+
 // ====== Common utility functions ======
 
 const zip = (...as) => [...as[0]].map((_, i) => as.map((a) => a[i]))
@@ -258,6 +263,7 @@ const miscSources = {
   'SDO/AIA 193': src_sdo_193,
   'RANDOM.ORG': src_random_org(256),
   'Ayu.land digest': src_log_digest,
+  'OpenSky Network': src_opensky_network,
 }
 const miscSourcesConstruct = async (timestampRef) => {
   timestampRef -= 60 * 60000
