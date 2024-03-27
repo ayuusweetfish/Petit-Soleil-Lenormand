@@ -1,6 +1,6 @@
 import { encodeHex, decodeHex } from 'https://deno.land/std@0.220.1/encoding/hex.ts'
-import { sha3_224, sha3_512 } from 'npm:@noble/hashes@1.3.0/sha3'
-import { keccakprg } from 'npm:@noble/hashes@1.3.0/sha3-addons'
+import { sha3_224, sha3_512, keccakP } from 'npm:@noble/hashes@1.4.0/sha3'
+import { u32, isLE, byteSwap32 } from 'npm:@noble/hashes@1.4.0/utils'
 import { serveFile } from 'https://deno.land/std@0.220.1/http/file_server.ts'
 
 // --unstable-kv
@@ -226,32 +226,84 @@ const src_opensky_network = async (timestamp) => {
 
 const zip = (...as) => [...as[0]].map((_, i) => as.map((a) => a[i]))
 
+const keccakPrng = () => {
+  const state = new Uint8Array(200)
+  const stateWords = u32(state)
+  const p = (isLE ? () => {
+    keccakP(stateWords, 24)
+  } : () => {
+    byteSwap32(stateWords)
+    keccakP(stateWords, 24)
+    byteSwap32(stateWords)
+  })
+  // Rate = 512 b = 64 B (capacity = 1088 b)
+  const feed = function* (buf) {
+    let pos = 0
+    for (let i = 0; i < buf.length; i++) {
+      state[pos++] ^= buf[i]
+      if (pos === 64) {
+        p()
+        yield state.subarray(0, 64)
+        pos = 0
+      }
+    }
+    // Pad 10*1
+    state[pos] ^= 0x80
+    state[63] ^= 0x01
+    p()
+    yield state.subarray(0, 64)
+  }
+  const fetchBlockInto = (out) => {
+    p()
+    if (!out) out = new Uint8Array(64)
+    for (let i = 0; i < 64; i++) out[i] ^= state[i]
+    return out
+  }
+  return {
+    feed,
+    fetchBlockInto,
+  }
+}
+/*
+const r = keccakPrng()
+const u = new Uint8Array(100)
+// r.feed(u).forEach(() => {})
+for (const block of r.feed(u)) console.log(block)
+Deno.exit(0)
+*/
+
 const hashAllEntries = (entries) => {
   entries.sort((a, b) => a[0].localeCompare(b[0]))
   const breakdown = []
-  const prng = keccakprg(510)
+  const prng = keccakPrng()
   for (const [key, value] of entries) {
     // persistLog(`${key}\t${value.length},SHA-3-224=${encodeHex(sha3_224(value))}`)
-    prng.feed(value)
+    prng.feed(value).forEach(() => {})
     breakdown.push([key, value.length, encodeHex(sha3_224(value))])
   }
-  const result = prng.fetch(4096)
+  const result = new Uint8Array(4096)
+  // Initial whitening
+  for (let i = 0; i < 4096; i += 64)
+    prng.fetchBlockInto(result.subarray(i, i + 64))
   let curIndex = 0
   for (const [key, value] of entries) {
-    for (let i = 0; i < value.length; i += 64) {
-      prng.feed(value.slice(i, i + 64))
-      const digestBlock = prng.fetch(64)
-      curIndex += 1
-      for (let i = 0; i < 64; i++) {
-        result[curIndex] ^= digestBlock[i]
-        curIndex = (curIndex + 1) % 4096
-      }
+    for (let block of prng.feed(value)) {
+      prng.feed(value.subarray(curIndex, curIndex + 64))
+      curIndex = (curIndex + 64) % 4096
     }
   }
-  const whiten = prng.fetch(4096)
-  for (let i = 0; i < 4096; i++) result[4095 - i] ^= whiten[i]
+  // Final whitening
+  for (let i = 0; i < 4096; i += 64)
+    prng.fetchBlockInto(result.subarray(i, i + 64))
   return [result, breakdown]
 }
+/*
+console.log(hashAllEntries([
+  ['source 1', new Uint8Array(100)],
+  ['source 2', new Uint8Array(100)],
+]))
+Deno.exit(0)
+*/
 
 // ====== Miscellaneous sources for local randomness ======
 
