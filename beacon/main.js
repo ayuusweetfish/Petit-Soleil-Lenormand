@@ -301,8 +301,8 @@ const hashAllEntries = (entries) => {
 const [result, breakdown] = hashAllEntries([
   // ['source 1', new Uint8Array(100)],
   // ['source 2', new Uint8Array(100)],
-  // ['hash.c', await Deno.readFile('page/verify/hash.c')],
-  // ['hash.c', await Deno.readFile('page/verify/hash.c')],
+  // ['hash.c', await Deno.readFile('page/hash.c')],
+  // ['hash.c', await Deno.readFile('page/hash.c')],
   ['font-subset.py', await Deno.readFile('page/font-subset.py')],
   ['index.html', await Deno.readFile('page/index.html')],
 ])
@@ -459,6 +459,7 @@ let currentFinalizedDigest = null
 let currentFinalizedDigestTimestamp = null
 
 const currentPulseTimestamp = (absolute) => {
+  return 1711641600000
   const timestamp = Date.now() + (absolute ? 0 : 3 * 60000)
   return timestamp - timestamp % (60 * 60000)
 }
@@ -597,6 +598,18 @@ const savedPulseResp = async (timestamp, format) => {
   return jsonResp(obj)
 }
 
+const renderTemplate = (s, lookup, extra) => {
+  return s.replaceAll(/{{~(.*)\s*([0-9A-Za-z_]+)\s*([^]*\S)\s*\1~(?:}}|-}}\s*)/gm, (_, _delim, key, w) => {
+    const list = lookup[key] || []
+    return list.map((entry, index) =>
+      renderTemplate(w, entry, { index: (index + 1).toString().padStart(2, '0') })
+    ).join('')
+  }).replaceAll(/{{\s*([0-9A-Za-z_]+)\s*}}/g, (_, w) => {
+    return lookup[w] !== undefined ? lookup[w].toString() :
+           extra[w] !== undefined ? extra[w].toString() : ''
+  })
+}
+
 Deno.serve({
   port: 3321,
 }, async (req, info) => {
@@ -625,13 +638,28 @@ Deno.serve({
       const timestamp = latestPulseTimestamp()
       const output = await loadOutput(timestamp)
       const details = await loadOutputDetails(timestamp)
-      const lookup = {
-        'latest': (output || '(absent)').substring(0, 16),
+      for (const entry of details) {
+        const match = entry.message.match(/\.([^/\.]+)$/)
+        entry.extension = (match ? match[1] :
+          (entry.message.startsWith('https://eumetview.eumetsat.int') ? 'jpg' : 'bin'))
       }
-      let content = await Deno.readTextFile('page/index.html')
-      content = content.replaceAll(/{{\s*([0-9A-Za-z_]+)\s*}}/g, (_, w) => {
-        return lookup[w] || ''
-      })
+      const outputArray = decodeHex(output)
+      const localRandomnessArray = await miscSourceBlockForTimestamp(timestamp)
+      for (let i = 0; i < 4096; i++) outputArray[i] ^= localRandomnessArray[i]
+      const prefixSuffix = (s) => {
+        if (s instanceof Uint8Array) s = encodeHex(s)
+        return (s.substring(0, 16) + '...' + s.substring(s.length - 16))
+      }
+      const lookup = !output ? {} : {
+        // 'latestPrefix': output.substring(0, 16) + '...',
+        'latestPrefixSuffix': prefixSuffix(output),
+        'contentHashPrefixSuffix': prefixSuffix(outputArray),
+        'localRandomnessPrefixSuffix': prefixSuffix(localRandomnessArray),
+        'precommitment': prefixSuffix(await miscSourceBlockHashForTimestamp(timestamp - 60 * 60000)),
+        'details': details.filter((e) => e.length !== null),
+      }
+      const template = await Deno.readTextFile('page/index.html')
+      const content = renderTemplate(template, lookup)
       return new Response(content, {
         headers: { 'Content-Type': 'text/html; encoding=utf-8' }
       })
