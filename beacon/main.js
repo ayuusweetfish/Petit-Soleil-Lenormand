@@ -624,9 +624,9 @@ Deno.serve({
     if (url.pathname === '/') {
       const timestamp = latestPulseTimestamp()
       const output = await loadOutput(timestamp)
-      // const details = await loadOutputDetails(timestamp)
+      const details = await loadOutputDetails(timestamp)
       const lookup = {
-        'latest': output,
+        'latest': (output || '(absent)').substring(0, 16),
       }
       let content = await Deno.readTextFile('page/index.html')
       content = content.replaceAll(/{{\s*([0-9A-Za-z_]+)\s*}}/g, (_, w) => {
