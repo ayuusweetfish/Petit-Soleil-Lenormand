@@ -288,7 +288,7 @@ const hashAllEntries = (entries) => {
   let curIndex = 0
   for (const [key, value] of entries) {
     for (let block of prng.feed(value)) {
-      prng.feed(value.subarray(curIndex, curIndex + 64))
+      for (let i = 0; i < 64; i++) result[curIndex + i] ^= block[i]
       curIndex = (curIndex + 64) % 4096
     }
   }
@@ -298,10 +298,13 @@ const hashAllEntries = (entries) => {
   return [result, breakdown]
 }
 /*
-console.log(hashAllEntries([
-  ['source 1', new Uint8Array(100)],
-  ['source 2', new Uint8Array(100)],
-]))
+const [result, breakdown] = hashAllEntries([
+  // ['source 1', new Uint8Array(100)],
+  // ['source 2', new Uint8Array(100)],
+  ['hash.c', await Deno.readFile('page/verify/hash.c')],
+  ['hash.c', await Deno.readFile('page/verify/hash.c')],
+])
+console.log(encodeHex(result))
 Deno.exit(0)
 */
 
