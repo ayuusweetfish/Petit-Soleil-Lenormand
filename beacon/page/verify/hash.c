@@ -1,91 +1,92 @@
-// ====== keccak-tiny.c =======
+// SPDX-License-Identifier: CC0-1.0
 
-/** libkeccak-tiny
- *
- * A single-file implementation of SHA-3 and SHAKE.
- *
- * Implementor: David Leon Gil
- * License: CC0, attribution kindly requested. Blame taken too,
- * but not liability.
- */
+// A 4096-bit hash for multiple files,
+// where each bit in each file affects all output bits equally
+// and the image size is close to 2^4096
+// Ayu, 2024 (vernal equinox)
 
+#include <assert.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 
-/******** The Keccak-f[1600] permutation ********/
+static uint8_t big_endian = 0;
 
-/*** Constants. ***/
-static const uint8_t rho[24] = \
-  { 1,  3,   6, 10, 15, 21,
-    28, 36, 45, 55,  2, 14,
-    27, 41, 56,  8, 25, 43,
-    62, 18, 39, 61, 20, 44};
-static const uint8_t pi[24] = \
-  {10,  7, 11, 17, 18, 3,
-    5, 16,  8, 21, 24, 4,
-   15, 23, 19, 13, 12, 2,
-   20, 14, 22,  9, 6,  1};
-static const uint64_t RC[24] = \
-  {1ULL, 0x8082ULL, 0x800000000000808aULL, 0x8000000080008000ULL,
-   0x808bULL, 0x80000001ULL, 0x8000000080008081ULL, 0x8000000000008009ULL,
-   0x8aULL, 0x88ULL, 0x80008009ULL, 0x8000000aULL,
-   0x8000808bULL, 0x800000000000008bULL, 0x8000000000008089ULL, 0x8000000000008003ULL,
-   0x8000000000008002ULL, 0x8000000000000080ULL, 0x800aULL, 0x800000008000000aULL,
-   0x8000000080008081ULL, 0x8000000000008080ULL, 0x80000001ULL, 0x8000000080008008ULL};
+// ====== The Keccak permutation ======
+// Based on libkeccak-tiny by David Leon Gil under the CC0 permit
 
-/*** Helper macros to unroll the permutation. ***/
-#define rol(x, s) (((x) << s) | ((x) >> (64 - s)))
-#define REPEAT6(e) e e e e e e
-#define REPEAT24(e) REPEAT6(e e e e)
-#define REPEAT5(e) e e e e e
-#define FOR5(v, s, e) \
-  v = 0;            \
-  REPEAT5(e; v += s;)
+#define rol(x, s) (((x) << (s)) | ((x) >> (64 - (s))))
 
-/*** Keccak-f[1600] ***/
-static inline void keccak_f(void* state) {
-  uint64_t* a = (uint64_t*)state;
+// Keccak-f[1600]
+static inline void keccak_f(void *state) {
+  static const uint8_t rho[24] = \
+    { 1,  3,  6, 10, 15, 21,
+     28, 36, 45, 55,  2, 14,
+     27, 41, 56,  8, 25, 43,
+     62, 18, 39, 61, 20, 44};
+  static const uint8_t pi[24] = \
+    {10,  7, 11, 17, 18,  3,
+      5, 16,  8, 21, 24,  4,
+     15, 23, 19, 13, 12,  2,
+     20, 14, 22,  9,  6,  1};
+  static const uint64_t RC[24] = \
+    {0x0000000000000001ull, 0x0000000000008082ull, 0x800000000000808Aull,
+     0x8000000080008000ull, 0x000000000000808Bull, 0x0000000080000001ull,
+     0x8000000080008081ull, 0x8000000000008009ull, 0x000000000000008Aull,
+     0x0000000000000088ull, 0x0000000080008009ull, 0x000000008000000Aull,
+     0x000000008000808Bull, 0x800000000000008Bull, 0x8000000000008089ull,
+     0x8000000000008003ull, 0x8000000000008002ull, 0x8000000000000080ull,
+     0x000000000000800Aull, 0x800000008000000Aull, 0x8000000080008081ull,
+     0x8000000000008080ull, 0x0000000080000001ull, 0x8000000080008008ull};
+
+  uint64_t *a = (uint64_t *)state;
   uint64_t b[5] = {0};
-  uint64_t t = 0;
-  uint8_t x, y;
+
+  if (big_endian)
+    for (int x = 0; x < 25; x++) a[x] = __builtin_bswap64(a[x]);
 
   for (int i = 0; i < 24; i++) {
     // Theta
-    FOR5(x, 1,
-         b[x] = 0;
-         FOR5(y, 5,
-              b[x] ^= a[x + y]; ))
-    FOR5(x, 1,
-         FOR5(y, 5,
-              a[y + x] ^= b[(x + 4) % 5] ^ rol(b[(x + 1) % 5], 1); ))
+    for (int x = 0; x < 5; x++) {
+      b[x] = 0;
+      for (int y = 0; y < 25; y += 5)
+        b[x] ^= a[x + y];
+    }
+    for (int x = 0; x < 5; x++) {
+      for (int y = 0; y < 25; y += 5)
+        a[y + x] ^= b[(x + 4) % 5] ^ rol(b[(x + 1) % 5], 1);
+    }
     // Rho and pi
-    t = a[1];
-    x = 0;
-    REPEAT24(b[0] = a[pi[x]];
-             a[pi[x]] = rol(t, rho[x]);
-             t = b[0];
-             x++; )
+    uint64_t t = a[1];
+    for (int x = 0; x < 24; x++) {
+      b[0] = a[pi[x]];
+      a[pi[x]] = rol(t, rho[x]);
+      t = b[0];
+    }
     // Chi
-    FOR5(y,
-       5,
-       FOR5(x, 1,
-            b[x] = a[y + x];)
-       FOR5(x, 1,
-            a[y + x] = b[x] ^ ((~b[(x + 1) % 5]) & b[(x + 2) % 5]); ))
+    for (int y = 0; y < 25; y += 5) {
+      for (int x = 0; x < 5; x++)
+        b[x] = a[y + x];
+      for (int x = 0; x < 5; x++)
+        a[y + x] = b[x] ^ ((~b[(x + 1) % 5]) & b[(x + 2) % 5]);
+    }
     // Iota
     a[0] ^= RC[i];
   }
+
+  if (big_endian)
+    for (int x = 0; x < 25; x++) a[x] = __builtin_bswap64(a[x]);
 }
 
-// ====== End of keccak-tiny.c ======
+// ====== Main ======
 
-#include <assert.h>
-#include <stdio.h>
-#include <stdlib.h>
+// A Keccak-based PRNG
+// Sponge construction, 10*1 padding, rate = 512, capacity = 1088
 
 static uint8_t state[200] = { 0 };
 
+// Feed a large block of data,
+// squeezing into an output buffer (by xor'ing into it) along the way
 static inline void feed(
   const uint8_t *buffer, size_t in_len,
   uint8_t *out, size_t out_len, size_t *out_pos
@@ -118,6 +119,7 @@ static inline void feed(
   #undef yield_squeeze
 }
 
+// Squeeze values into an output buffer (by xor'ing into it)
 static inline void whiten(uint8_t *out, size_t out_len)
 {
   assert(out_len % 64 == 0);
@@ -130,12 +132,9 @@ static inline void whiten(uint8_t *out, size_t out_len)
 
 int main(int argc, char *argv[])
 {
-/*
-  uint8_t s[200] = { 0 };
-  keccak_f(s);
-  for (int i = 0; i < 200; i++)
-    printf("%02x%s", s[i], i % 40 == 39 ? "\n" : i % 8 == 7 ? " - " : " ");
-*/
+  // Check endianness
+  uint16_t test = 0x1234;
+  if (*(uint8_t *)&test != 0x34) big_endian = 1;
 
   if (argc <= 1) {
     fprintf(stderr, "usage: %s <file> ...\n", argv[0]);

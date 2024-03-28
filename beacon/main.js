@@ -301,8 +301,10 @@ const hashAllEntries = (entries) => {
 const [result, breakdown] = hashAllEntries([
   // ['source 1', new Uint8Array(100)],
   // ['source 2', new Uint8Array(100)],
-  ['hash.c', await Deno.readFile('page/verify/hash.c')],
-  ['hash.c', await Deno.readFile('page/verify/hash.c')],
+  // ['hash.c', await Deno.readFile('page/verify/hash.c')],
+  // ['hash.c', await Deno.readFile('page/verify/hash.c')],
+  ['font-subset.py', await Deno.readFile('page/font-subset.py')],
+  ['index.html', await Deno.readFile('page/index.html')],
 ])
 console.log(encodeHex(result))
 Deno.exit(0)
