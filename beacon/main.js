@@ -462,6 +462,7 @@ const currentPulseTimestamp = (absolute) => {
   const timestamp = Date.now() + (absolute ? 0 : 3 * 60000)
   return timestamp - timestamp % (60 * 60000)
 }
+const latestPulseTimestamp = () => currentPulseTimestamp(true) - 60 * 60000
 
 const checkUpdate = async (finalize, timestamp) => {
   timestamp = timestamp || currentPulseTimestamp()
@@ -616,9 +617,24 @@ Deno.serve({
     if (urlPartsLatest) {
       let [_, timestamp, format] = urlPartsLatest
       if (timestamp === 'latest')
-        timestamp = currentPulseTimestamp(true) - 60 * 60000
+        timestamp = latestPulseTimestamp()
       else timestamp = +timestamp
       return await savedPulseResp(timestamp, (format || '').substring(1))
+    }
+    if (url.pathname === '/') {
+      const timestamp = latestPulseTimestamp()
+      const output = await loadOutput(timestamp)
+      // const details = await loadOutputDetails(timestamp)
+      const lookup = {
+        'latest': output,
+      }
+      let content = await Deno.readTextFile('page/index.html')
+      content = content.replaceAll(/{{\s*([0-9A-Za-z_]+)\s*}}/g, (_, w) => {
+        return lookup[w] || ''
+      })
+      return new Response(content, {
+        headers: { 'Content-Type': 'text/html; encoding=utf-8' }
+      })
     }
     // Try static files
     const tryStat = async (path) => {
@@ -629,8 +645,8 @@ Deno.serve({
         throw e
       }
     }
-    if (url.pathname === '/' || await tryStat('page/' + url.pathname.substring(1))) {
-      const path = (url.pathname === '/' ? 'index.html' : url.pathname.substring(1))
+    if (await tryStat('page/' + url.pathname.substring(1))) {
+      const path = url.pathname.substring(1)
       return await serveFile(req, 'page/' + path)
     }
   } else {
