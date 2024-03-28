@@ -113,7 +113,7 @@ a'~}}
     &gt; ./hash{{~c' details &nbsp;{{ index }}.{{ extension }} c'~}}<br>
     {{ contentHashPrefixSuffix }}<br>
     &gt; # Check that local randomness matches precommitment<br>
-    &gt; echo '{{ localRandomnessPrefixSuffix }}' | openssl dgst -sha3-224<br>
+    &gt; xxd -r -p &lt;&lt;&lt; {{ localRandomnessPrefixSuffix }} | openssl dgst -sha3-512<br>
     {{ precommitment }}<br>
     &gt; python3 -c 'print(hex(0x{{ contentHashPrefixSuffix }} ^ 0x{{ localRandomnessPrefixSuffix }}))'<br>
     0x{{ latestPrefixSuffix }}<br>

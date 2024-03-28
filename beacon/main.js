@@ -655,7 +655,7 @@ Deno.serve({
         'latestPrefixSuffix': prefixSuffix(output),
         'contentHashPrefixSuffix': prefixSuffix(outputArray),
         'localRandomnessPrefixSuffix': prefixSuffix(localRandomnessArray),
-        'precommitment': prefixSuffix(await miscSourceBlockHashForTimestamp(timestamp - 60 * 60000)),
+        'precommitment': prefixSuffix(await miscSourceBlockHashForTimestamp(timestamp)),
         'details': details.filter((e) => e.length !== null),
       }
       const template = await Deno.readTextFile('page/index.html')
