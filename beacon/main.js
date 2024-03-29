@@ -495,6 +495,7 @@ const checkUpdate = async (finalize, timestamp) => {
     const [digest, breakdown] = digestCurrent()
     currentFinalizedDigest = digest
     currentFinalizedDigestTimestamp = timestamp
+    const filesHash = encodeHex(digest.subarray(0, 8))
 
     // Mix in miscellaneous sources
     const miscSourcesBlock = await miscSourceBlockForTimestamp(timestamp)
@@ -513,10 +514,11 @@ const checkUpdate = async (finalize, timestamp) => {
     const op = kv.atomic()
 
     const miscSourcesNextHash = await miscSourceBlockHashForTimestamp(timestamp + 60 * 60000)
-    persistLog('finalized!' + ' ' +
-      encodeHex(currentFinalizedDigest).substring(0, 16) + ' ' +
-      encodeHex(miscSourcesBlock).substring(0, 16) + ' ' +
-      encodeHex(miscSourcesNextHash))
+    persistLog('finalized! timestamp ' + timestamp +
+      ', files ' + filesHash + '...' +
+      ', local ' + encodeHex(miscSourcesBlock.subarray(0, 8)) + '...' +
+      ', output ' + encodeHex(currentFinalizedDigest.subarray(0, 8)) + '...' +
+      ', precommit ' + encodeHex(miscSourcesNextHash.subarray(0, 8)) + '...')
     op.set(['output', timestamp], encodeHex(currentFinalizedDigest))
 
     const breakdownStr = breakdown.map(
@@ -597,7 +599,7 @@ await initializeStates()
 Deno.cron('Initialize updates', '0 * * * *', initializeUpdate)
 Deno.cron('Check updates', '5-44/5 * * * *', () => checkUpdate(false))
 Deno.cron('Finalize updates', '45 * * * *', () => checkUpdate(true))
-// await checkUpdate(true)
+// await checkUpdate(true) // For debug usage
 
 const jsonResp = (o) =>
   new Response(JSON.stringify(o), { headers: { 'Content-Type': 'application/json' } })
@@ -672,18 +674,27 @@ Deno.serve({
           entry.extension = (basenameMatch ? basenameMatch[1] :
             (entry.message.startsWith('https://eumetview.eumetsat.int') ? 'jpg' : 'bin'))
         }
-        const outputArray = decodeHex(output)
+        // Previous output
+        const previousOutputStr = (await kv.get(['output', timestamp - 60 * 60000])).value
+        const previousOutput = (previousOutputStr ?
+          decodeHex(previousOutputStr) : new Uint8Array(4096))
+        // Recover the hash of files
+        const filesHash = decodeHex(output)
         const localRandomnessArray = await miscSourceBlockForTimestamp(timestamp)
-        for (let i = 0; i < 4096; i++) outputArray[i] ^= localRandomnessArray[i]
+        for (let i = 0; i < 4096; i++)
+          filesHash[i] ^= (localRandomnessArray[i] ^ previousOutput[i])
+
         const prefixSuffix = (s) => {
           if (s instanceof Uint8Array) s = encodeHex(s)
           return (s.substring(0, 16) + '...' + s.substring(s.length - 16))
         }
         lookup = {
+          'latestTimestamp': timestamp,
           'latestTimestampISO': (new Date(timestamp)).toISOString(),
           // 'latestPrefix': output.substring(0, 16) + '...',
-          'latestPrefixSuffix': prefixSuffix(output),
-          'contentHashPrefixSuffix': prefixSuffix(outputArray),
+          'latestOutputPrefixSuffix': prefixSuffix(output),
+          'contentHashPrefixSuffix': prefixSuffix(filesHash),
+          'previousOutputPrefixSuffix': prefixSuffix(previousOutput),
           'localRandomnessPrefixSuffix': prefixSuffix(localRandomnessArray),
           'previousTimestamp': timestamp - 60 * 60000,
           'precommitment': prefixSuffix(await miscSourceBlockHashForTimestamp(timestamp)),

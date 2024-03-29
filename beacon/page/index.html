@@ -76,11 +76,25 @@ tt {
 tt.anybreak {
   line-break: anywhere;
 }
-tt.scrolling {
+tt.code {
   display: inline-block;
-  max-width: 100%;
+  width: calc(100% - 0.9em);
   overflow-x: scroll;
   white-space: nowrap;
+  padding: 0.3ex 0.6em 0.3ex 0.3em;
+  background: #fafafa;
+  border-radius: 0.5em;
+  border: #eee 0.05em solid;
+}
+.command {
+  user-select: all;
+}
+.command::before {
+  content: '> ';
+  color: #ccc;
+}
+.command-output {
+  color: #72a;
 }
 </style>
 <header>
@@ -90,35 +104,56 @@ tt.scrolling {
   <p><strong>ABRC</strong> (Ayu’s Beacon of Randomness on Clouds) is a public</p>
   <p lang='zh-Hans'>《千字文》原名 original 为《次韵王羲之书千字》，南朝梁（502年─549年）周兴嗣所作的一首长韵文。它是一篇由一千个不重复的汉字组成的文章。据说是梁武帝取了王羲之写的一千个字体，令其亲人练习书法，而后觉得杂乱无章，于是又命周兴嗣（470年─521年）编为一篇文章。</p>
   <p lang='zh-Hans'>《千字文》由“天地玄黄”到“焉哉乎也”，总共250个隔句押韵的四字短句构成，内容包含天文、地理、政治、经济、社会、历史、伦理，整篇文章一字都不重复。</p>
-  <p>Latest: {{ latestTimestampISO }}<br><tt class='anybreak'>{{ latestPrefixSuffix }}</tt></p>
-{{~a' details
+  <p>Latest: {{ latestTimestampISO }} ({{ latestTimestamp }})<br><tt class='anybreak'>{{ latestOutputPrefixSuffix }}</tt></p>
   <hr>
   <div>
-    <p><strong>{{ key }}</strong></p>
-    <p><tt class='scrolling'>
-    &gt; curl {{ message }} | openssl dgst -sha3-224<br>
-    {{ digest }}
+    <p><strong>1.</strong> Download the images involved.</p>
+    <p><tt class='code'>
+      <span class='command'>curl{{~a' details
+        &nbsp;\<br>&nbsp;&nbsp;{{ message }} -o {{ index }}.{{ extension }}
+      a'~}}</span><br>
     </tt></p>
-  </div>
-a'~}}
-  <hr>
-  <div>
-    <p><strong>Sum</strong></p>
-    <p><tt class='scrolling'>
-    &gt; curl https://abrc.ayu.land/hash.c -o hash.c<br>
-    &gt; cc -O2 hash.c -o hash<br>
-    &gt; curl{{~b' details
-      &nbsp;\<br>&nbsp;&nbsp;{{ message }} -o {{ index }}.{{ extension }}
-    b'~}}<br>
-    &gt; ./hash{{~c' details &nbsp;{{ index }}.{{ extension }} c'~}}<br>
-    {{ contentHashPrefixSuffix }}<br>
-    &gt; # Check that local randomness matches precommitment<br>
-    &gt; curl https://abrc.ayu.land/{{ previousTimestamp }} | grep precommit<br>
-    ... "precommit":"{{ precommitment }}" ...<br>
-    &gt; xxd -r -p &lt;&lt;&lt; {{ localRandomnessPrefixSuffix }} | openssl dgst -sha3-512<br>
-    {{ precommitment }}<br>
-    &gt; python3 -c 'print(hex(0x{{ contentHashPrefixSuffix }} ^ 0x{{ localRandomnessPrefixSuffix }}))'<br>
-    0x{{ latestPrefixSuffix }}<br>
+
+    <p><strong>2.</strong> Verify the signatures.</p>
+    <p><tt class='code'>
+      <span class='command'>openssl dgst -sha3-224{{~b1' details &nbsp;{{ index }}.{{ extension }} b1'~}}</span><br>
+      <span class='command-output'>{{~b2' details
+        SHA3-224({{ index }}.{{ extension }})= {{ digest }}<br>
+      b2'~}}</span>
+      <span class='command'>curl https://abrc.ayu.land/{{ latestTimestamp }} | perl -nle 'print join "\n", m/"digest":"([0-9a-f]+)"/g'</span><br>
+      <span class='command-output'>{{~b3' details
+        {{ digest }}<br>
+      b3'~}}</span>
+    </tt></p>
+
+    <p><strong>3.</strong> Calculate the 4096-byte hash from the files.</p>
+    <p><tt class='code'>
+      <span class='command'>curl https://abrc.ayu.land/hash.c -o hash.c</span><br>
+      <span class='command'>cc -O2 hash.c -o hash</span><br>
+      <span class='command'>HASH=$(./hash{{~c' details &nbsp;{{ index }}.{{ extension }} c'~}}); echo $HASH</span><br>
+      <span class='command-output'>{{ contentHashPrefixSuffix }}</span><br>
+    </tt></p>
+
+    <p><strong>4.</strong> Verify that local randomness matches the precommitment digest in the previous pulse.</p>
+    <p><tt class='code'>
+      <span class='command'>PRECM=$(curl https://abrc.ayu.land/{{ previousTimestamp }} | perl -ne 'm/"precommit":"([0-9a-f]+)"/; print "$1"'); echo $PRECM</span><br>
+      <span class='command-output'>{{ precommitment }}</span><br>
+      <span class='command'>LOCAL=$(curl https://abrc.ayu.land/{{ latestTimestamp }} | perl -ne 'm/"local":"([0-9a-f]+)"/; print "$1"'); echo $LOCAL</span><br>
+      <span class='command-output'>{{ localRandomnessPrefixSuffix }}</span><br>
+      <span class='command'>xxd -r -p &lt;&lt;&lt; $LOCAL | openssl dgst -sha3-512</span><br>
+      <span class='command-output'>{{ precommitment }}</span><br>
+    </tt></p>
+
+    <p><strong>5.</strong> Retrieve the previous output.</p>
+    <p><tt class='code'>
+      <span class='command'>PREV=$(curl https://abrc.ayu.land/{{ previousTimestamp }} | perl -ne 'm/"output":"([0-9a-f]+)"/; print "$1"'); echo $PREV</span><br>
+      <span class='command-output'>{{ previousOutputPrefixSuffix }}</span><br>
+    </tt></p>
+
+    <p><strong>6.</strong> Finally, verify that the bitwise exclusive-or of the hash of files (step <strong>3</strong>), the local randomness (step <strong>4</strong>), and previous output (step <strong>5</strong>) are the same.</p>
+    <p><tt class='code'>
+      <span class='command'>python3 -c "print('%08192x' % (0x$HASH ^ 0x$LOCAL ^ 0x$PREV))"</span><br>
+      <span class='command-output'>{{ latestOutputPrefixSuffix }}</span><br>
     </tt></p>
   </div>
 </main>
