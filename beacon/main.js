@@ -473,6 +473,7 @@ let currentFinalizedDigestTimestamp = null
 const currentPulseTimestamp = (absolute) => {
   const timestamp = Date.now() + (absolute ? 0 : 3 * 60000)
   return timestamp - timestamp % (60 * 60000)
+    // + 60 * 60000 // For debug usage
 }
 const latestPulseTimestamp = () => currentPulseTimestamp(true) - 60 * 60000
 
@@ -679,10 +680,12 @@ Deno.serve({
           return (s.substring(0, 16) + '...' + s.substring(s.length - 16))
         }
         lookup = {
+          'latestTimestampISO': (new Date(timestamp)).toISOString(),
           // 'latestPrefix': output.substring(0, 16) + '...',
           'latestPrefixSuffix': prefixSuffix(output),
           'contentHashPrefixSuffix': prefixSuffix(outputArray),
           'localRandomnessPrefixSuffix': prefixSuffix(localRandomnessArray),
+          'previousTimestamp': timestamp - 60 * 60000,
           'precommitment': prefixSuffix(await miscSourceBlockHashForTimestamp(timestamp)),
           'details': details.filter((e) => e.length !== null),
         }
