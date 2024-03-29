@@ -57,14 +57,15 @@ const src_irb_nist_m = src_beacon_multi(src_irb_nist, 60000, 1)
 const src_irb_inmetro_br_m = src_beacon_multi(src_irb_inmetro_br, 60000, 20)
 const src_irb_uchile_m = src_beacon_multi(src_irb_uchile, 60000, 20)
 
-const fetchImage = async (url, modifiedAfter, modifiedBefore) => {
+const fetchImage = async (url, modifiedAfter, modifiedBefore, cache) => {
   console.log('fetch', url)
   const resp = await fetch(url)
+  let modifiedAt
   if (modifiedAfter !== undefined) {
     if (!resp.headers.has('Last-Modified')) {
       throw new Error(`Do not know when last modified (${url})`)
     }
-    const modifiedAt = new Date(resp.headers.get('Last-Modified'))
+    modifiedAt = new Date(resp.headers.get('Last-Modified'))
     if (modifiedAt < modifiedAfter || modifiedAt > modifiedBefore) {
       throw new Error(`Modification timestamp ${modifiedAt.toISOString()} not in ${modifiedAfter.toISOString()}/${modifiedBefore.toISOString()} (${url})`)
     }
@@ -75,6 +76,16 @@ const fetchImage = async (url, modifiedAfter, modifiedBefore) => {
   }
   const arr = new Uint8Array(await payload.arrayBuffer())
   arr._url = url
+  if (cache) {
+    const timestamp = +(modifiedAt || new Date())
+    const basename = url.substring(url.lastIndexOf('/') + 1)
+    arr._cache = `${timestamp}/${basename}`
+    const op = kv.atomic()
+    const blockSize = 64000
+    for (let i = 0; i < arr.length; i += blockSize)
+      op.set(['cache', timestamp, basename, i / blockSize], arr.subarray(i, i + blockSize))
+    await op.commit()
+  }
   return arr
 }
 
@@ -166,7 +177,8 @@ const src_imd = (type) => async (timestamp) => {
   timestamp -= timestamp % (15 * 60000)
   return await fetchImage(`http://satellite.imd.gov.in/imgr/globe_${type}.jpg`,
     new Date(timestamp),
-    new Date(timestamp + 30 * 60000))
+    new Date(timestamp + 30 * 60000),
+    true)
 }
 const src_imd_ir1 = src_imd('ir1')
 const src_imd_mp = src_imd('mp')
@@ -459,7 +471,6 @@ let currentFinalizedDigest = null
 let currentFinalizedDigestTimestamp = null
 
 const currentPulseTimestamp = (absolute) => {
-  return 1711641600000
   const timestamp = Date.now() + (absolute ? 0 : 3 * 60000)
   return timestamp - timestamp % (60 * 60000)
 }
@@ -472,6 +483,12 @@ const checkUpdate = async (finalize, timestamp) => {
 
   persistLog('checking')
   const rejects = Object.entries(await tryUpdateCurrent(timestamp))
+
+  const wrapUrlsInMessage = (arr) => {
+    if (!arr._url) return undefined
+    if (arr._cache) return `https://abrc.ayu.land/cache/${arr._cache} (cached ${arr._url})`
+    return arr._url
+  }
 
   if (finalize || rejects.length === 0) {
     const [digest, breakdown] = digestCurrent()
@@ -507,15 +524,21 @@ const checkUpdate = async (finalize, timestamp) => {
     op.set(['output', timestamp, 'breakdown'], breakdownStr)
 
     const messages = {}
-    for (const [key, value] of Object.entries(current)) messages[key] = value._url
+    for (const [key, value] of Object.entries(current))
+      messages[key] = wrapUrlsInMessage(value)
     for (const [key, message] of rejects) messages[key] = message
     op.set(['output', 'messages', timestamp], JSON.stringify(messages))
 
-    // Remove obsolete messages
-    console.log(['output', 'messages', timestamp - (23 * 60 * 60000 + 1)])
+    // Remove obsolete messages and caches
     for await (const { key } of kv.list({
       prefix: ['output', 'messages'],
       end: ['output', 'messages', timestamp - (23 * 60 * 60000 + 1)],
+    })) {
+      op.delete(key)
+    }
+    for await (const { key } of kv.list({
+      prefix: ['cache'],
+      end: ['cache', timestamp - (23 * 60 * 60000 + 1)],
     })) {
       op.delete(key)
     }
@@ -530,7 +553,7 @@ const checkUpdate = async (finalize, timestamp) => {
     currentEntries[key] = [
       value.length,
       encodeHex(sha3_224(value)),
-      value._url,
+      wrapUrlsInMessage(value)
     ]
   }
   for (const [key, message] of rejects) {
@@ -573,6 +596,7 @@ await initializeStates()
 Deno.cron('Initialize updates', '0 * * * *', initializeUpdate)
 Deno.cron('Check updates', '5-44/5 * * * *', () => checkUpdate(false))
 Deno.cron('Finalize updates', '45 * * * *', () => checkUpdate(true))
+// await checkUpdate(true)
 
 const jsonResp = (o) =>
   new Response(JSON.stringify(o), { headers: { 'Content-Type': 'application/json' } })
@@ -606,7 +630,7 @@ const renderTemplate = (s, lookup, extra) => {
     ).join('')
   }).replaceAll(/{{\s*([0-9A-Za-z_]+)\s*}}/g, (_, w) => {
     return lookup[w] !== undefined ? lookup[w].toString() :
-           extra[w] !== undefined ? extra[w].toString() : ''
+           (extra && extra[w] !== undefined) ? extra[w].toString() : ''
   })
 }
 
@@ -637,31 +661,57 @@ Deno.serve({
     if (url.pathname === '/') {
       const timestamp = latestPulseTimestamp()
       const output = await loadOutput(timestamp)
-      const details = await loadOutputDetails(timestamp)
-      for (const entry of details) {
-        const match = entry.message.match(/\.([^/\.]+)$/)
-        entry.extension = (match ? match[1] :
-          (entry.message.startsWith('https://eumetview.eumetsat.int') ? 'jpg' : 'bin'))
-      }
-      const outputArray = decodeHex(output)
-      const localRandomnessArray = await miscSourceBlockForTimestamp(timestamp)
-      for (let i = 0; i < 4096; i++) outputArray[i] ^= localRandomnessArray[i]
-      const prefixSuffix = (s) => {
-        if (s instanceof Uint8Array) s = encodeHex(s)
-        return (s.substring(0, 16) + '...' + s.substring(s.length - 16))
-      }
-      const lookup = !output ? {} : {
-        // 'latestPrefix': output.substring(0, 16) + '...',
-        'latestPrefixSuffix': prefixSuffix(output),
-        'contentHashPrefixSuffix': prefixSuffix(outputArray),
-        'localRandomnessPrefixSuffix': prefixSuffix(localRandomnessArray),
-        'precommitment': prefixSuffix(await miscSourceBlockHashForTimestamp(timestamp)),
-        'details': details.filter((e) => e.length !== null),
+      let lookup = {}
+      if (output) {
+        const details = await loadOutputDetails(timestamp)
+        for (const entry of details) {
+          const cacheMatch = entry.message.match(/^([^ ]*) \(cached .+\)$/)
+          if (cacheMatch) entry.message = cacheMatch[1]
+          const basenameMatch = entry.message.match(/\.([^/\.]+)$/)
+          entry.extension = (basenameMatch ? basenameMatch[1] :
+            (entry.message.startsWith('https://eumetview.eumetsat.int') ? 'jpg' : 'bin'))
+        }
+        const outputArray = decodeHex(output)
+        const localRandomnessArray = await miscSourceBlockForTimestamp(timestamp)
+        for (let i = 0; i < 4096; i++) outputArray[i] ^= localRandomnessArray[i]
+        const prefixSuffix = (s) => {
+          if (s instanceof Uint8Array) s = encodeHex(s)
+          return (s.substring(0, 16) + '...' + s.substring(s.length - 16))
+        }
+        lookup = {
+          // 'latestPrefix': output.substring(0, 16) + '...',
+          'latestPrefixSuffix': prefixSuffix(output),
+          'contentHashPrefixSuffix': prefixSuffix(outputArray),
+          'localRandomnessPrefixSuffix': prefixSuffix(localRandomnessArray),
+          'precommitment': prefixSuffix(await miscSourceBlockHashForTimestamp(timestamp)),
+          'details': details.filter((e) => e.length !== null),
+        }
       }
       const template = await Deno.readTextFile('page/index.html')
       const content = renderTemplate(template, lookup)
       return new Response(content, {
         headers: { 'Content-Type': 'text/html; encoding=utf-8' }
+      })
+    }
+    // Caches
+    const urlPartsCache = url.pathname.match(/^\/cache\/([0-9]{1,15})\/([^\/]+)$/)
+    if (urlPartsCache) {
+      const [_, timestamp, basename] = urlPartsCache
+      const buffers = []
+      for await (const { value } of kv.list({
+        prefix: ['cache', +timestamp, basename],
+      })) {
+        buffers.push(value)
+      }
+      const totalLen = buffers.reduce((a, b) => a + b.length, 0)
+      const concatenatedBuffer = new Uint8Array(totalLen)
+      let p = 0
+      for (const b of buffers) {
+        concatenatedBuffer.set(b, p)
+        p += b.length
+      }
+      return new Response(concatenatedBuffer, {
+        'Content-Type': 'image/jpeg', // TODO: Store this in the database
       })
     }
     // Try static files
