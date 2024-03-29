@@ -41,16 +41,28 @@ html {
 }
 body {
   margin: 0;
+  background: #fdfdfd;
+  color: #111;
+}
+@media (prefers-color-scheme: dark) {
+  body {
+    background: #343434;
+    color: #f4f4f4;
+  }
 }
 body:lang(zh), *[lang='zh'] {
   font-family: 'Chill Yunmo', 'ABeeZee', sans-serif;
 }
 header {
-  margin: 0 0 0.5ex;
-  background: #eee;
+  margin: 0 0 -0.5ex;
   /* Disable collapsing of padding */
   display: inline-block;
   width: 100%;
+
+  background-image: url(./banner_bg.svg);
+  background-position: bottom;
+  background-repeat: none;
+  background-size: cover;
 }
 header h1 {
   font-family: 'Borel Sans', sans-serif;
@@ -58,7 +70,7 @@ header h1 {
   letter-spacing: 0.075em;
   line-height: 1;
   margin: 0;
-  padding: 1.5ex 1rem 0.1ex;  /* padding-left fallback */
+  padding: 1.5ex 1rem 0.5ex;  /* padding-left fallback */
   padding-left: clamp(1rem, 50vw - 20rem, 10vw);
 }
 main {
@@ -95,7 +107,16 @@ tt.code {
   color: #ccc;
 }
 .command-output {
-  color: #72a;
+  color: #81c;
+}
+@media (prefers-color-scheme: dark) {
+  tt.code {
+    background: #282828;
+    border-color: #333;
+  }
+  .command-output {
+    color: #e9f;
+  }
 }
 </style>
 <header>
