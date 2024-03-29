@@ -86,6 +86,7 @@ const fetchImage = async (url, modifiedAfter, modifiedBefore, cache) => {
       op.set(['cache', timestamp, basename, i / blockSize], arr.subarray(i, i + blockSize))
     await op.commit()
   }
+  console.log('fetch', url, `complete, modification ${modifiedAt}, size ${arr.length}`)
   return arr
 }
 
@@ -98,7 +99,7 @@ const src_fy_geostationary = (type) => async (timestamp) => {
     (date.getUTCMonth() + 1).toString().padStart(2, '0') +
     date.getUTCDate().toString().padStart(2, '0')
   const hourStr = date.getUTCHours().toString().padStart(2, '0')
-  const payload = await fetchImage(`https://img.nsmc.org.cn/CLOUDIMAGE/GEOS/MOS/${type}/PIC/GBAL/${dateStr}/GEOS_IMAGR_GBAL_L2_MOS_${type}_GLL_${dateStr}_${hourStr}00_10KM_MS.jpg`)
+  const payload = await fetchImage(`https://img.nsmc.org.cn/CLOUDIMAGE/GEOS/MOS/${type}/PIC/GBAL/${dateStr}/GEOS_IMAGR_GBAL_L2_MOS_${type}_GLL_${dateStr}_${hourStr}00_10KM_MS.jpg`, undefined, undefined, true)
   return payload
 }
 const src_fy_geostationary_ir = src_fy_geostationary('IRX')
@@ -112,7 +113,7 @@ const src_fy4b_disk = async (timestamp) => {
     date.getUTCDate().toString().padStart(2, '0')
   const hourStr = date.getUTCHours().toString().padStart(2, '0')
   const minute = date.getUTCMinutes()
-  const payload = await fetchImage(`https://img.nsmc.org.cn/CLOUDIMAGE/FY4B/AGRI/GCLR/DISK/FY4B-_AGRI--_N_DISK_1050E_L2-_GCLR_MULT_NOM_${dateStr}${hourStr}${minute.toString().padStart(2, '0')}00_${dateStr}${hourStr}${minute + 14}59_1000M_V0001.JPG`)
+  const payload = await fetchImage(`https://img.nsmc.org.cn/CLOUDIMAGE/FY4B/AGRI/GCLR/DISK/FY4B-_AGRI--_N_DISK_1050E_L2-_GCLR_MULT_NOM_${dateStr}${hourStr}${minute.toString().padStart(2, '0')}00_${dateStr}${hourStr}${minute + 14}59_1000M_V0001.JPG`, undefined, undefined, true)
   return payload
 }
 const src_goes18_noaa = async (timestamp) => {
