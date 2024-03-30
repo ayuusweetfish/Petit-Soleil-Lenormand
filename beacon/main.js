@@ -7,6 +7,8 @@ import { serveFile } from 'https://deno.land/std@0.220.1/http/file_server.ts'
 const isOnDenoDeploy = (Deno.env.get('DENO_DEPLOYMENT_ID') !== undefined)
 const kv = await Deno.openKv(isOnDenoDeploy ? undefined : 'kv.sqlite')
 
+const imageCacheServer = Deno.env.get('CACHE_SERVER') || 'http://localhost:3322'
+
 let lastMonotonicDateStr = null
 let lastMonotonicCount = 0
 const monotonicDate = () => {
@@ -60,12 +62,12 @@ const src_irb_uchile_m = src_beacon_multi(src_irb_uchile, 60000, 20)
 const fetchImage = async (url, modifiedAfter, modifiedBefore, cache) => {
   console.log('fetch', url)
   const resp = await fetch(url)
-  let modifiedAt
+  const modifiedAt = (resp.headers.has('Last-Modified') ?
+    new Date(resp.headers.get('Last-Modified')) : undefined)
   if (modifiedAfter !== undefined) {
-    if (!resp.headers.has('Last-Modified')) {
+    if (modifiedAt === undefined) {
       throw new Error(`Do not know when last modified (${url})`)
     }
-    modifiedAt = new Date(resp.headers.get('Last-Modified'))
     if (modifiedAt < modifiedAfter || modifiedAt > modifiedBefore) {
       throw new Error(`Modification timestamp ${modifiedAt.toISOString()} not in ${modifiedAfter.toISOString()}/${modifiedBefore.toISOString()} (${url})`)
     }
@@ -79,20 +81,33 @@ const fetchImage = async (url, modifiedAfter, modifiedBefore, cache) => {
   if (cache) {
     const timestamp = +(modifiedAt || new Date())
     const basename = url.substring(url.lastIndexOf('/') + 1)
-    arr._cache = `${timestamp}/${basename}`
-    const blockSize = 64000
-    const batchSize = 12  // Number of blocks in each write batch (819200)
-    let p = 0
-    while (p < arr.length) {
-      const op = kv.atomic()
-      for (let numBlocks = 0; numBlocks < batchSize && p < arr.length; p += blockSize)
-        op.set(['cache', timestamp, basename, p / blockSize], arr.subarray(p, p + blockSize))
-      await op.commit()
+    const extensionMap = {
+      'image/jpeg': 'jpg',
+      'image/png': 'png',
     }
+    let extension = ''
+    if (resp.headers.has('Content-Type')) {
+      extension = extensionMap[resp.headers.get('Content-Type')]
+      if (extension) extension = '.' + extension
+      if (basename.endsWith(extension)) extension = ''
+    }
+    const cacheFileName = `${timestamp}_${basename}${extension}`
+    // Post to server
+    const form = new FormData()
+    form.append('', new Blob([arr]), cacheFileName)
+    const post = await fetch(`${imageCacheServer}/`, {
+      method: 'PUT',
+      body: form,
+    })
+    arr._cache = cacheFileName
   }
   console.log('fetch', url, `complete, modification ${modifiedAt}, size ${arr.length}`)
   return arr
 }
+/*
+await fetchImage('https://ayu.land/favicon.ico', undefined, undefined, true)
+Deno.exit(0)
+*/
 
 // Satellite images
 const src_fy_geostationary = (type) => async (timestamp) => {
@@ -103,7 +118,10 @@ const src_fy_geostationary = (type) => async (timestamp) => {
     (date.getUTCMonth() + 1).toString().padStart(2, '0') +
     date.getUTCDate().toString().padStart(2, '0')
   const hourStr = date.getUTCHours().toString().padStart(2, '0')
-  const payload = await fetchImage(`https://img.nsmc.org.cn/CLOUDIMAGE/GEOS/MOS/${type}/PIC/GBAL/${dateStr}/GEOS_IMAGR_GBAL_L2_MOS_${type}_GLL_${dateStr}_${hourStr}00_10KM_MS.jpg`, undefined, undefined, true)
+  const payload = await fetchImage(`https://img.nsmc.org.cn/CLOUDIMAGE/GEOS/MOS/${type}/PIC/GBAL/${dateStr}/GEOS_IMAGR_GBAL_L2_MOS_${type}_GLL_${dateStr}_${hourStr}00_10KM_MS.jpg`,
+    new Date(timestamp - 60 * 60000),
+    new Date(timestamp + 60 * 60000),
+    true)
   return payload
 }
 const src_fy_geostationary_ir = src_fy_geostationary('IRX')
@@ -117,7 +135,7 @@ const src_fy4b_disk = async (timestamp) => {
     date.getUTCDate().toString().padStart(2, '0')
   const hourStr = date.getUTCHours().toString().padStart(2, '0')
   const minute = date.getUTCMinutes()
-  const payload = await fetchImage(`https://img.nsmc.org.cn/CLOUDIMAGE/FY4B/AGRI/GCLR/DISK/FY4B-_AGRI--_N_DISK_1050E_L2-_GCLR_MULT_NOM_${dateStr}${hourStr}${minute.toString().padStart(2, '0')}00_${dateStr}${hourStr}${minute + 14}59_1000M_V0001.JPG`, undefined, undefined, true)
+  const payload = await fetchImage(`https://img.nsmc.org.cn/CLOUDIMAGE/FY4B/AGRI/GCLR/DISK/FY4B-_AGRI--_N_DISK_1050E_L2-_GCLR_MULT_NOM_${dateStr}${hourStr}${minute.toString().padStart(2, '0')}00_${dateStr}${hourStr}${minute + 14}59_1000M_V0001.JPG`, undefined, undefined, false)
   return payload
 }
 const src_goes18_noaa = async (timestamp) => {
@@ -713,25 +731,11 @@ Deno.serve({
       })
     }
     // Caches
-    const urlPartsCache = url.pathname.match(/^\/cache\/([0-9]{1,15})\/([^\/]+)$/)
+    const urlPartsCache = url.pathname.match(/^\/cache\/([^\/]+)$/)
     if (urlPartsCache) {
-      const [_, timestamp, basename] = urlPartsCache
-      const buffers = []
-      for await (const { value } of kv.list({
-        prefix: ['cache', +timestamp, basename],
-      })) {
-        buffers.push(value)
-      }
-      const totalLen = buffers.reduce((a, b) => a + b.length, 0)
-      const concatenatedBuffer = new Uint8Array(totalLen)
-      let p = 0
-      for (const b of buffers) {
-        concatenatedBuffer.set(b, p)
-        p += b.length
-      }
-      return new Response(concatenatedBuffer, {
-        'Content-Type': 'image/jpeg', // TODO: Store this in the database
-      })
+      const [_, basename] = urlPartsCache
+      const headers = new Headers(req.headers)
+      return fetch(`${imageCacheServer}/${basename}`, { headers })
     }
     // Try static files
     const tryStat = async (path) => {

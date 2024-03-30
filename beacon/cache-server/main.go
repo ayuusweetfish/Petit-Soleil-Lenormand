@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -64,8 +65,8 @@ func handleUpload(w http.ResponseWriter, r *http.Request) []string {
 }
 
 func putHandler(w http.ResponseWriter, r *http.Request) {
-	handleUpload(w, r)
-	fmt.Fprintln(w, "")
+	ids := handleUpload(w, r)
+	fmt.Fprintln(w, strings.Join(ids, "\n"))
 }
 
 var staticFileServer http.Handler
