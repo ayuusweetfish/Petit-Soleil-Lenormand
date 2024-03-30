@@ -5,9 +5,9 @@ import { u32, isLE, byteSwap32 } from 'npm:@noble/hashes@1.4.0/utils'
 import { serveFile } from 'https://deno.land/std@0.220.1/http/file_server.ts'
 
 const sha3_224_hasher = await createSHA3(224)
-const sha3_224 = (a) => sha3_224_hasher.init().digest('binary')
+const sha3_224 = (a) => sha3_224_hasher.init().update(a).digest('binary')
 const sha3_512_hasher = await createSHA3(512)
-const sha3_512 = (a) => sha3_512_hasher.init().digest('binary')
+const sha3_512 = (a) => sha3_512_hasher.init().update(a).digest('binary')
 
 // --unstable-kv
 const isOnDenoDeploy = (Deno.env.get('DENO_DEPLOYMENT_ID') !== undefined)
