@@ -80,11 +80,15 @@ const fetchImage = async (url, modifiedAfter, modifiedBefore, cache) => {
     const timestamp = +(modifiedAt || new Date())
     const basename = url.substring(url.lastIndexOf('/') + 1)
     arr._cache = `${timestamp}/${basename}`
-    const op = kv.atomic()
     const blockSize = 64000
-    for (let i = 0; i < arr.length; i += blockSize)
-      op.set(['cache', timestamp, basename, i / blockSize], arr.subarray(i, i + blockSize))
-    await op.commit()
+    const batchSize = 12  // Number of blocks in each write batch (819200)
+    let p = 0
+    while (p < arr.length) {
+      const op = kv.atomic()
+      for (let numBlocks = 0; numBlocks < batchSize && p < arr.length; p += blockSize)
+        op.set(['cache', timestamp, basename, p / blockSize], arr.subarray(p, p + blockSize))
+      await op.commit()
+    }
   }
   console.log('fetch', url, `complete, modification ${modifiedAt}, size ${arr.length}`)
   return arr
