@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"log"
 	"net/http"
 	"os"
@@ -79,6 +80,31 @@ func getHandler(w http.ResponseWriter, r *http.Request) {
 	staticFileServer.ServeHTTP(w, r)
 }
 
+func prune() {
+	log.Print("Pruning")
+	now := time.Now()
+	err := filepath.Walk("uploads", func(path string, info fs.FileInfo, err error) error {
+		if err != nil {
+			return filepath.SkipDir
+		}
+		if !info.IsDir() {
+			age := now.Sub(info.ModTime())
+			fmt.Printf("%s %v\n", info.Name(), age)
+			if age >= 24*time.Hour {
+				// Remove file
+				if err := os.Remove(filepath.Join("uploads", info.Name())); err != nil {
+					return err
+				}
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		log.Printf("%v", err)
+	}
+	time.AfterFunc(1*time.Hour, prune)
+}
+
 // A handler that captures panics and return the error message as 500
 type errCaptureHandler struct {
 	Handler http.Handler
@@ -136,5 +162,6 @@ func main() {
 	if err := os.MkdirAll(filepath.Join(".", "uploads"), 0755); err != nil {
 		panic(err)
 	}
+	prune()
 	ServerListen()
 }
