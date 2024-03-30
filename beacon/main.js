@@ -1,8 +1,13 @@
 import { encodeHex, decodeHex } from 'https://deno.land/std@0.220.1/encoding/hex.ts'
 import { keccakP } from 'npm:@noble/hashes@1.4.0/sha3'
-import { sha3 } from 'npm:hash-wasm@4.11.0'
+import { createSHA3 } from 'npm:hash-wasm@4.11.0'
 import { u32, isLE, byteSwap32 } from 'npm:@noble/hashes@1.4.0/utils'
 import { serveFile } from 'https://deno.land/std@0.220.1/http/file_server.ts'
+
+const sha3_224_hasher = await createSHA3(224)
+const sha3_224 = (a) => sha3_224_hasher.init().digest('binary')
+const sha3_512_hasher = await createSHA3(512)
+const sha3_512 = (a) => sha3_512_hasher.init().digest('binary')
 
 // --unstable-kv
 const isOnDenoDeploy = (Deno.env.get('DENO_DEPLOYMENT_ID') !== undefined)
@@ -312,14 +317,14 @@ const keccakPrng = () => {
   }
 }
 
-const hashAllEntries = async (entries) => {
+const hashAllEntries = (entries) => {
   entries.sort((a, b) => a[0].localeCompare(b[0]))
   const breakdown = []
   const prng = keccakPrng()
   for (const [key, value] of entries) {
     // persistLog(`${key}\t${value.length},SHA-3-224=${encodeHex(sha3_224(value))}`)
     prng.feed(value)
-    breakdown.push([key, value.length, encodeHex(await sha3(value, 224))])
+    breakdown.push([key, value.length, encodeHex(sha3_224(value))])
   }
   const result = new Uint8Array(4096)
   // Initial whitening
@@ -373,7 +378,7 @@ const miscSourcesConstruct = async (timestampRef) => {
   const entries = resultsKeyed
     .filter(([key, result]) => result.status === 'fulfilled')
     .map(([key, result]) => [key, result.value])
-  const [digestBlock, _] = await hashAllEntries(entries)
+  const [digestBlock, _] = hashAllEntries(entries)
   const localRand = new Uint8Array(4096)
   crypto.getRandomValues(localRand)
   for (let i = 0; i < 4096; i++) digestBlock[i] ^= localRand[i]
@@ -400,7 +405,7 @@ const miscSourceBlockForTimestamp = async (timestamp, construct) => {
 }
 const miscSourceBlockHashForTimestamp = async (timestamp) => {
   const block = await miscSourceBlockForTimestamp(timestamp, true)
-  return await sha3(block, 512)
+  return sha3_512(block)
 }
 
 // ====== Public sources ======
@@ -447,9 +452,9 @@ const tryUpdateCurrent = async (timestamp) => {
   }
   return rejects
 }
-const digestCurrent = async () => {
+const digestCurrent = () => {
   const entries = Object.entries(current)
-  return await hashAllEntries(entries)
+  return hashAllEntries(entries)
 }
 const clearCurrent = () => {
   for (const key of Object.getOwnPropertyNames(current)) {
@@ -520,7 +525,7 @@ const checkUpdate = async (finalize, timestamp) => {
   }
 
   if (finalize || rejects.length === 0) {
-    const [digest, breakdown] = await digestCurrent()
+    const [digest, breakdown] = digestCurrent()
     currentFinalizedDigest = digest
     currentFinalizedDigestTimestamp = timestamp
     const filesHash = encodeHex(digest.subarray(0, 8))
@@ -583,7 +588,7 @@ const checkUpdate = async (finalize, timestamp) => {
   for (const [key, value] of Object.entries(current)) {
     currentEntries[key] = [
       value.length,
-      encodeHex(await sha3(value, 224)),
+      encodeHex(sha3_224(value)),
       wrapUrlsInMessage(value)
     ]
   }
@@ -630,7 +635,7 @@ Deno.cron('Finalize updates', '45 * * * *', () => checkUpdate(true))
 /*
 for (const k in current) delete current[k]
 await tryUpdateCurrent()
-const [digest, breakdown] = await digestCurrent()
+const [digest, breakdown] = digestCurrent()
 Deno.exit(0)
 */
 
