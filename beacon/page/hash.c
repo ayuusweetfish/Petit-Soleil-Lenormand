@@ -45,7 +45,7 @@ static inline void keccak_f(void *state) {
   if (big_endian)
     for (int x = 0; x < 25; x++) a[x] = __builtin_bswap64(a[x]);
 
-  for (int i = 0; i < 24; i++) {
+  for (int i = 12; i < 24; i++) {
     // Theta
     for (int x = 0; x < 5; x++) {
       b[x] = 0;
@@ -99,7 +99,7 @@ static inline void feed(
     if (out) {                               \
       for (uint_fast8_t i = 0; i < 128; i++) \
         out[*out_pos + i] ^= state[i];       \
-      *out_pos = (*out_pos + 64) % out_len;  \
+      *out_pos = (*out_pos + 128) % out_len; \
     }                                        \
   } while (0)
 
