@@ -91,13 +91,17 @@ tt.anybreak {
 }
 tt.code {
   display: inline-block;
-  width: calc(100% - 0.9em);
+  width: calc(100% - 0.8em);
+  margin-left: -0.1em;
   overflow-x: scroll;
   white-space: nowrap;
-  padding: 0.3ex 0.6em 0.3ex 0.3em;
+  padding: 0.3ex 0.5em;
   background: #fafafa;
   border-radius: 0.5em;
   border: #eee 0.05em solid;
+}
+tt.code br {
+  margin-right: 0.5em;
 }
 .command {
   user-select: all;
@@ -152,15 +156,15 @@ tt.code {
     <p><tt class='code'>
       <span class='command'>curl https://abrc.ayu.land/hash.c -o hash.c</span><br>
       <span class='command'>cc -O2 hash.c -o hash</span><br>
-      <span class='command'>HASH=$(./hash{{~c' details &nbsp;{{ index }}.{{ extension }} c'~}}); echo $HASH</span><br>
+      <span class='command'>HASH=$(./hash{{~c' details &nbsp;{{ index }}.{{ extension }} c'~}}); echo ${HASH::16}...${HASH:(-16)}</span><br>
       <span class='command-output'>{{ contentHashPrefixSuffix }}</span><br>
     </tt></p>
 
     <p><strong>4.</strong> Verify that local randomness matches the precommitment digest in the previous pulse.</p>
     <p><tt class='code'>
-      <span class='command'>PRECM=$(curl https://abrc.ayu.land/{{ previousTimestamp }} | perl -ne 'm/"precommit":"([0-9a-f]+)"/; print "$1"'); echo $PRECM</span><br>
+      <span class='command'>PRECM=$(curl https://abrc.ayu.land/{{ previousTimestamp }} | perl -ne 'm/"precommit":"([0-9a-f]+)"/; print "$1"'); echo ${PRECM:0:16}...${PRECM:(-16)}</span><br>
       <span class='command-output'>{{ precommitment }}</span><br>
-      <span class='command'>LOCAL=$(curl https://abrc.ayu.land/{{ latestTimestamp }} | perl -ne 'm/"local":"([0-9a-f]+)"/; print "$1"'); echo $LOCAL</span><br>
+      <span class='command'>LOCAL=$(curl https://abrc.ayu.land/{{ latestTimestamp }} | perl -ne 'm/"local":"([0-9a-f]+)"/; print "$1"'); echo ${LOCAL:0:16}...${LOCAL:(-16)}</span><br>
       <span class='command-output'>{{ localRandomnessPrefixSuffix }}</span><br>
       <span class='command'>xxd -r -p &lt;&lt;&lt; $LOCAL | openssl dgst -sha3-512</span><br>
       <span class='command-output'>{{ precommitment }}</span><br>
@@ -168,7 +172,7 @@ tt.code {
 
     <p><strong>5.</strong> Retrieve the previous output.</p>
     <p><tt class='code'>
-      <span class='command'>PREV=$(curl https://abrc.ayu.land/{{ previousTimestamp }} | perl -ne 'm/"output":"([0-9a-f]+)"/; print "$1"'); echo $PREV</span><br>
+      <span class='command'>PREV=$(curl https://abrc.ayu.land/{{ previousTimestamp }} | perl -ne 'm/"output":"([0-9a-f]+)"/; print "$1"'); echo ${PREV:0:16}...${PREV:(-16)}</span><br>
       <span class='command-output'>{{ previousOutputPrefixSuffix }}</span><br>
     </tt></p>
 
