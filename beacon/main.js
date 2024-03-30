@@ -1,5 +1,6 @@
 import { encodeHex, decodeHex } from 'https://deno.land/std@0.220.1/encoding/hex.ts'
-import { sha3_224, sha3_512, keccakP } from 'npm:@noble/hashes@1.4.0/sha3'
+import { keccakP } from 'npm:@noble/hashes@1.4.0/sha3'
+import { sha3 } from 'npm:hash-wasm@4.11.0'
 import { u32, isLE, byteSwap32 } from 'npm:@noble/hashes@1.4.0/utils'
 import { serveFile } from 'https://deno.land/std@0.220.1/http/file_server.ts'
 
@@ -8,6 +9,7 @@ const isOnDenoDeploy = (Deno.env.get('DENO_DEPLOYMENT_ID') !== undefined)
 const kv = await Deno.openKv(isOnDenoDeploy ? undefined : 'kv.sqlite')
 
 const imageCacheServer = Deno.env.get('CACHE_SERVER') || 'http://localhost:3322'
+console.log(`Image cache server: ${imageCacheServer}`)
 
 let lastMonotonicDateStr = null
 let lastMonotonicCount = 0
@@ -101,13 +103,24 @@ const fetchImage = async (url, modifiedAfter, modifiedBefore, cache) => {
     })
     arr._cache = cacheFileName
   }
-  console.log('fetch', url, `complete, modification ${modifiedAt}, size ${arr.length}`)
+  console.log('fetch', url, `complete, modification ${modifiedAt.toISOString()}, size ${arr.length}`)
   return arr
 }
 /*
 await fetchImage('https://ayu.land/favicon.ico', undefined, undefined, true)
 Deno.exit(0)
 */
+
+// Test
+const src_test = async (timestamp) => {
+  const a = new Uint8Array(1000000)
+  let seed = 1
+  for (let i = 0; i < a.length; i++) {
+    seed = (seed * 214013 + 2531011) & 0xffffffff
+    a[i] = (seed >> 16) & 0xff
+  }
+  return a
+}
 
 // Satellite images
 const src_fy_geostationary = (type) => async (timestamp) => {
@@ -118,10 +131,7 @@ const src_fy_geostationary = (type) => async (timestamp) => {
     (date.getUTCMonth() + 1).toString().padStart(2, '0') +
     date.getUTCDate().toString().padStart(2, '0')
   const hourStr = date.getUTCHours().toString().padStart(2, '0')
-  const payload = await fetchImage(`https://img.nsmc.org.cn/CLOUDIMAGE/GEOS/MOS/${type}/PIC/GBAL/${dateStr}/GEOS_IMAGR_GBAL_L2_MOS_${type}_GLL_${dateStr}_${hourStr}00_10KM_MS.jpg`,
-    new Date(timestamp - 60 * 60000),
-    new Date(timestamp + 60 * 60000),
-    true)
+  const payload = await fetchImage(`https://img.nsmc.org.cn/CLOUDIMAGE/GEOS/MOS/${type}/PIC/GBAL/${dateStr}/GEOS_IMAGR_GBAL_L2_MOS_${type}_GLL_${dateStr}_${hourStr}00_10KM_MS.jpg`, undefined, undefined, true)
   return payload
 }
 const src_fy_geostationary_ir = src_fy_geostationary('IRX')
@@ -265,71 +275,66 @@ const keccakPrng = () => {
   const state = new Uint8Array(200)
   const stateWords = u32(state)
   const p = (isLE ? () => {
-    keccakP(stateWords, 24)
+    keccakP(stateWords, 12)
   } : () => {
     byteSwap32(stateWords)
-    keccakP(stateWords, 24)
+    keccakP(stateWords, 12)
     byteSwap32(stateWords)
   })
-  // Rate = 512 b = 64 B (capacity = 1088 b)
-  const feed = function* (buf) {
+  // Rate = 1024 b = 128 B (capacity = 576 b)
+  const feed = (buf, out, outIndex) => {
     let pos = 0
+    const yieldBlock = () => {
+      p()
+      pos = 0
+      if (out) {
+        for (let j = 0; j < 128; j++) out[outIndex + j] ^= state[j]
+        outIndex = (outIndex + 128) % 4096
+      }
+    }
     for (let i = 0; i < buf.length; i++) {
       state[pos++] ^= buf[i]
-      if (pos === 64) {
-        p()
-        yield state.subarray(0, 64)
-        pos = 0
-      }
+      if (pos === 128) yieldBlock()
     }
     // Pad 10*1
     state[pos] ^= 0x80
-    state[63] ^= 0x01
-    p()
-    yield state.subarray(0, 64)
+    state[127] ^= 0x01
+    yieldBlock()
+    return outIndex
   }
   const fetchBlockInto = (out) => {
     p()
-    if (!out) out = new Uint8Array(64)
-    for (let i = 0; i < 64; i++) out[i] ^= state[i]
-    return out
+    for (let i = 0; i < 128; i++) out[i] ^= state[i]
   }
   return {
     feed,
     fetchBlockInto,
   }
 }
-/*
-const r = keccakPrng()
-const u = new Uint8Array(100)
-// r.feed(u).forEach(() => {})
-for (const block of r.feed(u)) console.log(block)
-Deno.exit(0)
-*/
 
-const hashAllEntries = (entries) => {
+const hashAllEntries = async (entries) => {
   entries.sort((a, b) => a[0].localeCompare(b[0]))
+  const t0 = performance.now()
   const breakdown = []
   const prng = keccakPrng()
   for (const [key, value] of entries) {
     // persistLog(`${key}\t${value.length},SHA-3-224=${encodeHex(sha3_224(value))}`)
-    prng.feed(value).forEach(() => {})
-    breakdown.push([key, value.length, encodeHex(sha3_224(value))])
+    prng.feed(value)
+    breakdown.push([key, value.length, encodeHex(await sha3(value, 224))])
   }
   const result = new Uint8Array(4096)
   // Initial whitening
-  for (let i = 0; i < 4096; i += 64)
-    prng.fetchBlockInto(result.subarray(i, i + 64))
+  for (let i = 0; i < 4096; i += 128)
+    prng.fetchBlockInto(result.subarray(i, i + 128))
   let curIndex = 0
   for (const [key, value] of entries) {
-    for (let block of prng.feed(value)) {
-      for (let i = 0; i < 64; i++) result[curIndex + i] ^= block[i]
-      curIndex = (curIndex + 64) % 4096
-    }
+    curIndex = prng.feed(value, result, curIndex)
   }
   // Final whitening
-  for (let i = 0; i < 4096; i += 64)
-    prng.fetchBlockInto(result.subarray(i, i + 64))
+  for (let i = 0; i < 4096; i += 128)
+    prng.fetchBlockInto(result.subarray(i, i + 128))
+  const t1 = performance.now()
+  console.log(t1 - t0)
   return [result, breakdown]
 }
 /*
@@ -398,7 +403,7 @@ const miscSourceBlockForTimestamp = async (timestamp, construct) => {
 }
 const miscSourceBlockHashForTimestamp = async (timestamp) => {
   const block = await miscSourceBlockForTimestamp(timestamp, true)
-  return sha3_512(block)
+  return await sha3(block, 512)
 }
 
 // ====== Public sources ======
@@ -418,6 +423,9 @@ const sources = {
   'GK2A IR 8.7u': src_gk2a_ir087,
   'Elektro-L 2': (timestamp) => src_elektro_l2(timestamp - 60*60000),
   'Elektro-L 3': (timestamp) => src_elektro_l3(timestamp - 30*60000),
+/*
+  'Test': src_test,
+*/
 }
 const current = {}
 
@@ -442,9 +450,9 @@ const tryUpdateCurrent = async (timestamp) => {
   }
   return rejects
 }
-const digestCurrent = () => {
+const digestCurrent = async () => {
   const entries = Object.entries(current)
-  return hashAllEntries(entries)
+  return await hashAllEntries(entries)
 }
 const clearCurrent = () => {
   for (const key of Object.getOwnPropertyNames(current)) {
@@ -515,7 +523,7 @@ const checkUpdate = async (finalize, timestamp) => {
   }
 
   if (finalize || rejects.length === 0) {
-    const [digest, breakdown] = digestCurrent()
+    const [digest, breakdown] = await digestCurrent()
     currentFinalizedDigest = digest
     currentFinalizedDigestTimestamp = timestamp
     const filesHash = encodeHex(digest.subarray(0, 8))
@@ -578,7 +586,7 @@ const checkUpdate = async (finalize, timestamp) => {
   for (const [key, value] of Object.entries(current)) {
     currentEntries[key] = [
       value.length,
-      encodeHex(sha3_224(value)),
+      encodeHex(await sha3(value, 224)),
       wrapUrlsInMessage(value)
     ]
   }
@@ -617,12 +625,17 @@ Deno.exit(0)
 */
 
 await initializeStates()
-// await checkUpdate()
 // --unstable-cron
 Deno.cron('Initialize updates', '0 * * * *', initializeUpdate)
-Deno.cron('Check updates', '5-44/5 * * * *', () => checkUpdate(false))
+Deno.cron('Check updates', '5-44/1 * * * *', () => checkUpdate(false))
 Deno.cron('Finalize updates', '45 * * * *', () => checkUpdate(true))
 // await checkUpdate(true) // For debug usage
+/*
+for (const k in current) delete current[k]
+await tryUpdateCurrent()
+const [digest, breakdown] = await digestCurrent()
+Deno.exit(0)
+*/
 
 const jsonResp = (o) =>
   new Response(JSON.stringify(o), { headers: { 'Content-Type': 'application/json' } })
