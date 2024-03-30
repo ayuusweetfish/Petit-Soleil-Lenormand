@@ -314,7 +314,6 @@ const keccakPrng = () => {
 
 const hashAllEntries = async (entries) => {
   entries.sort((a, b) => a[0].localeCompare(b[0]))
-  const t0 = performance.now()
   const breakdown = []
   const prng = keccakPrng()
   for (const [key, value] of entries) {
@@ -333,8 +332,6 @@ const hashAllEntries = async (entries) => {
   // Final whitening
   for (let i = 0; i < 4096; i += 128)
     prng.fetchBlockInto(result.subarray(i, i + 128))
-  const t1 = performance.now()
-  console.log(t1 - t0)
   return [result, breakdown]
 }
 /*
@@ -376,7 +373,7 @@ const miscSourcesConstruct = async (timestampRef) => {
   const entries = resultsKeyed
     .filter(([key, result]) => result.status === 'fulfilled')
     .map(([key, result]) => [key, result.value])
-  const [digestBlock, _] = hashAllEntries(entries)
+  const [digestBlock, _] = await hashAllEntries(entries)
   const localRand = new Uint8Array(4096)
   crypto.getRandomValues(localRand)
   for (let i = 0; i < 4096; i++) digestBlock[i] ^= localRand[i]
@@ -627,7 +624,7 @@ Deno.exit(0)
 await initializeStates()
 // --unstable-cron
 Deno.cron('Initialize updates', '0 * * * *', initializeUpdate)
-Deno.cron('Check updates', '5-44/1 * * * *', () => checkUpdate(false))
+Deno.cron('Check updates', '5-44/5 * * * *', () => checkUpdate(false))
 Deno.cron('Finalize updates', '45 * * * *', () => checkUpdate(true))
 // await checkUpdate(true) // For debug usage
 /*

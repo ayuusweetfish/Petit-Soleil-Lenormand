@@ -81,7 +81,7 @@ static inline void keccak_f(void *state) {
 // ====== Main ======
 
 // A Keccak-based PRNG
-// Sponge construction, 10*1 padding, rate = 512, capacity = 1088
+// Sponge construction, 10*1 padding, rate = 1024, capacity = 576
 
 static uint8_t state[200] = { 0 };
 
@@ -91,28 +91,28 @@ static inline void feed(
   const uint8_t *buffer, size_t in_len,
   uint8_t *out, size_t out_len, size_t *out_pos
 ) {
-  assert(out_len % 64 == 0);
+  assert(out_len % 128 == 0);
   uint_fast8_t state_pos = 0;
 
-  #define yield_squeeze do {                \
-    keccak_f(state);                        \
-    if (out) {                              \
-      for (uint_fast8_t i = 0; i < 64; i++) \
-        out[*out_pos + i] ^= state[i];      \
-      *out_pos = (*out_pos + 64) % out_len; \
-    }                                       \
+  #define yield_squeeze do {                 \
+    keccak_f(state);                         \
+    if (out) {                               \
+      for (uint_fast8_t i = 0; i < 128; i++) \
+        out[*out_pos + i] ^= state[i];       \
+      *out_pos = (*out_pos + 64) % out_len;  \
+    }                                        \
   } while (0)
 
   for (size_t i = 0; i < in_len; i++) {
     state[state_pos++] ^= buffer[i];
-    if (state_pos == 64) {
+    if (state_pos == 128) {
       yield_squeeze;
       state_pos = 0;
     }
   }
   // Pad 10*1
   state[state_pos] ^= 0x80;
-  state[63] ^= 0x01;
+  state[127] ^= 0x01;
   // Yield last block
   yield_squeeze;
 
@@ -122,10 +122,10 @@ static inline void feed(
 // Squeeze values into an output buffer (by xor'ing into it)
 static inline void whiten(uint8_t *out, size_t out_len)
 {
-  assert(out_len % 64 == 0);
-  for (size_t p = 0; p < out_len; p += 64) {
+  assert(out_len % 128 == 0);
+  for (size_t p = 0; p < out_len; p += 128) {
     keccak_f(state);
-    for (uint_fast8_t i = 0; i < 64; i++)
+    for (uint_fast8_t i = 0; i < 128; i++)
       out[p + i] ^= state[i];
   }
 }
