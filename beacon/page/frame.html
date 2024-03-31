@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html><head>
+<html lang='{{ lang }}'><head>
   <meta http-equiv='Content-Type' content='text/html; charset=utf-8'>
   <meta name='viewport' content='width=device-width, initial-scale=1'>
   <title>{{ title }}ABRC</title>
@@ -51,9 +51,11 @@ body {
     color: #f4f4f4;
   }
 }
+/*
 body:lang(zh), *[lang='zh'] {
   font-family: 'Chill Yunmo', 'ABeeZee', sans-serif;
 }
+*/
 header {
   margin: 0 0 -0.5ex;
   /* Disable collapsing of padding */
@@ -66,17 +68,22 @@ header {
   background-size: cover;
 }
 header h1 {
-  font-family: 'Borel Sans', sans-serif;
+  font-family: 'Borel Sans';
   font-size: 2.5rem;
   letter-spacing: 0.075em;
   line-height: 1;
   margin: 0;
-  padding: 1.5ex 1rem 0.5ex;  /* padding-left fallback */
+  padding: 0.75em 1rem 0.25em;  /* padding-left fallback */
   padding-left: clamp(1rem, 50vw - 20rem, 10vw);
 }
 header h1 a {
   text-decoration: none;
   color: inherit;
+}
+header #lang-sel {
+  position: absolute;
+  top: 1ex;
+  right: 1em;
 }
 main {
   margin: 1ex auto;
@@ -171,6 +178,8 @@ footer {
 </style>
 <header>
   <h1><a href='/'>ABRC</a></h1>
+{{@zh}}  <div id='lang-sel'><a href='?en'>en</a></div>
+{{@en}}  <div id='lang-sel'><a href='?zh'>zh</a></div>
 </header>
 <main>
 {{ content }}

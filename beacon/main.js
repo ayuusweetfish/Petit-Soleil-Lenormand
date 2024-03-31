@@ -663,16 +663,47 @@ const savedPulseResp = async (timestamp, format) => {
   return jsonResp(obj)
 }
 
-const renderTemplate = (s, lookup, extra) => {
-  return s.replaceAll(/{{~(.*)\s*([0-9A-Za-z_]+)\s*([^]*\S)\s*\1~(?:}}|-}}\s*)/gm, (_, _delim, key, w) => {
+const renderTemplate = (s, lookup, lang, extra) => {
+  extra = extra || {}
+  extra.lang = (lang === 'zh' ? 'zh-Hans' : lang)
+  return s.replaceAll(/^{{\s*@([a-zA-Z-]+)\s*}}(.+\n)/gm, (_, capturedLang, content) => {
+    return (capturedLang === lang ? content : '')
+  }).replaceAll(/{{~(.*)\s*([0-9A-Za-z_]+)\s*([^]*\S)\s*\1~(?:}}|-}}\s*)/gm, (_, _delim, key, w) => {
     const list = lookup[key] || []
     return list.map((entry, index) =>
-      renderTemplate(w, entry, { index: (index + 1).toString().padStart(2, '0') })
+      renderTemplate(w, entry, lang, { index: (index + 1).toString().padStart(2, '0') })
     ).join('')
   }).replaceAll(/{{\s*([0-9A-Za-z_]+)\s*}}/g, (_, w) => {
     return lookup[w] !== undefined ? lookup[w].toString() :
-           (extra && extra[w] !== undefined) ? extra[w].toString() : ''
+           extra[w] !== undefined ? extra[w].toString() : ''
   })
+}
+
+const negotiateLang = (accept, supported) => {
+  const list = accept.split(',').map((s) => {
+    s = s.trim()
+    let q = 1
+    const pos = s.indexOf(';q=')
+    if (pos !== -1) {
+      const parsed = parseFloat(s.substring(pos + 3))
+      if (isFinite(parsed)) q = parsed
+      s = s.substring(0, pos).trim()
+    }
+    return { lang: s, q }
+  })
+
+  let bestScore = 0
+  let bestLang = supported[0]
+  for (const l of supported) {
+    for (const { lang, q } of list) {
+      if (lang.substring(0, 2) === l.substring(0, 2)) {
+        const score = q + (lang === l ? 0.2 : 0)
+        if (score > bestScore)
+          [bestScore, bestLang] = [score, l]
+      }
+    }
+  }
+  return bestLang
 }
 
 Deno.serve({
@@ -740,16 +771,19 @@ Deno.serve({
         }
       }
       const pageName = url.pathname.substring(1) || 'index'
+      const lang = negotiateLang(
+        url.search.substring(1) || req.headers.get('Accept-Language') || '',
+        ['en', 'zh'])
       const templateFrame = await Deno.readTextFile('page/frame.html')
       const templateContent = await Deno.readTextFile(`page/${pageName}.html`)
-      let content = renderTemplate(templateContent, lookup)
+      let content = renderTemplate(templateContent, lookup, lang)
       let title
       content = content.replace(/^<title>(.+)<\/title>\n/, (_, matchedTitle) => {
         title = matchedTitle
         return ''
       })
       title = (title ? (title + ' — ') : '')
-      const page = renderTemplate(templateFrame, { title, content })
+      const page = renderTemplate(templateFrame, { title, content }, lang)
       return new Response(page, {
         headers: { 'Content-Type': 'text/html; encoding=utf-8' }
       })
