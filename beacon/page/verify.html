@@ -1,0 +1,52 @@
+<a href='/'>Home</a>
+<hr>
+
+<h2>Verification</h2>
+<p><strong>1.</strong> Download the images involved.</p>
+<p><tt class='code'>
+  <span class='command'>curl{{~a' details
+    &nbsp;\<br>&nbsp;&nbsp;{{ message }} -o {{ index }}.{{ extension }}
+  a'~}}</span><br>
+</tt></p>
+
+<p><strong>2.</strong> Verify the signatures.</p>
+<p><tt class='code'>
+  <span class='command'>openssl dgst -sha3-224{{~b1' details &nbsp;{{ index }}.{{ extension }} b1'~}}</span><br>
+  <span class='command-output'>{{~b2' details
+    SHA3-224({{ index }}.{{ extension }})= {{ digest }}<br>
+  b2'~}}</span>
+  <span class='command'>curl https://abrc.ayu.land/{{ latestTimestamp }} | perl -nle 'print join "\n", m/"digest":"([0-9a-f]+)"/g'</span><br>
+  <span class='command-output'>{{~b3' details
+    {{ digest }}<br>
+  b3'~}}</span>
+</tt></p>
+
+<p><strong>3.</strong> Calculate the 4096-byte hash from the files.</p>
+<p><tt class='code'>
+  <span class='command'>curl https://abrc.ayu.land/hash.c -o hash.c</span><br>
+  <span class='command'>cc -O2 hash.c -o hash</span><br>
+  <span class='command'>HASH=$(./hash{{~c' details &nbsp;{{ index }}.{{ extension }} c'~}}); echo ${HASH::16}...${HASH:(-16)}</span><br>
+  <span class='command-output'>{{ contentHashPrefixSuffix }}</span><br>
+</tt></p>
+
+<p><strong>4.</strong> Verify that local randomness matches the precommitment digest in the previous pulse.</p>
+<p><tt class='code'>
+  <span class='command'>PRECM=$(curl https://abrc.ayu.land/{{ previousTimestamp }} | perl -ne 'm/"precommit":"([0-9a-f]+)"/; print "$1"'); echo ${PRECM:0:16}...${PRECM:(-16)}</span><br>
+  <span class='command-output'>{{ precommitment }}</span><br>
+  <span class='command'>LOCAL=$(curl https://abrc.ayu.land/{{ latestTimestamp }} | perl -ne 'm/"local":"([0-9a-f]+)"/; print "$1"'); echo ${LOCAL:0:16}...${LOCAL:(-16)}</span><br>
+  <span class='command-output'>{{ localRandomnessPrefixSuffix }}</span><br>
+  <span class='command'>xxd -r -p &lt;&lt;&lt; $LOCAL | openssl dgst -sha3-512</span><br>
+  <span class='command-output'>{{ precommitment }}</span><br>
+</tt></p>
+
+<p><strong>5.</strong> Retrieve the previous output.</p>
+<p><tt class='code'>
+  <span class='command'>PREV=$(curl https://abrc.ayu.land/{{ previousTimestamp }} | perl -ne 'm/"output":"([0-9a-f]+)"/; print "$1"'); echo ${PREV:0:16}...${PREV:(-16)}</span><br>
+  <span class='command-output'>{{ previousOutputPrefixSuffix }}</span><br>
+</tt></p>
+
+<p><strong>6.</strong> Finally, verify that the bitwise exclusive-or of the hash of files (step <strong>3</strong>), the local randomness (step <strong>4</strong>), and previous output (step <strong>5</strong>) are the same.</p>
+<p><tt class='code'>
+  <span class='command'>python3 -c "print('%08192x' % (0x$HASH ^ 0x$LOCAL ^ 0x$PREV))"</span><br>
+  <span class='command-output'>{{ latestOutputPrefixSuffix }}</span><br>
+</tt></p>

@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html><head>
+  <meta http-equiv='Content-Type' content='text/html; charset=utf-8'>
+  <meta name='viewport' content='width=device-width, initial-scale=1'>
+</head><body>
+<style>
+@font-face {
+  font-family: 'Borel Sans';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(./Borel-Regular-subset.woff2);
+}
+@font-face {
+  font-family: 'ABeeZee';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(./ABeeZee-Regular.woff2);
+}
+@font-face {
+  font-family: 'Chill Yunmo';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(./ChillYunmoGothicMedium_subset.woff2);
+  /* src: url(./ChillYunmoGothicMedium_scaled.ttf); /* For debug usage */
+}
+@font-face {
+  font-family: 'Sono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(./Sono_Monospace-Regular.woff2);
+}
+html {
+  font-size: calc(16px + 0.5vw);  /* fallback */
+  font-size: min(16px + 0.5vw, 20px);
+  font-family: 'ABeeZee', 'Chill Yunmo', sans-serif;
+  line-height: 1.5;
+}
+body {
+  margin: 0;
+  background: #fdfdfd;
+  color: #111;
+}
+@media (prefers-color-scheme: dark) {
+  body {
+    background: #343434;
+    color: #f4f4f4;
+  }
+}
+body:lang(zh), *[lang='zh'] {
+  font-family: 'Chill Yunmo', 'ABeeZee', sans-serif;
+}
+header {
+  margin: 0 0 -0.5ex;
+  /* Disable collapsing of padding */
+  display: inline-block;
+  width: 100%;
+
+  background-image: url(./banner_bg.svg);
+  background-position: bottom;
+  background-repeat: none;
+  background-size: cover;
+}
+header h1 {
+  font-family: 'Borel Sans', sans-serif;
+  font-size: 2.5rem;
+  letter-spacing: 0.075em;
+  line-height: 1;
+  margin: 0;
+  padding: 1.5ex 1rem 0.5ex;  /* padding-left fallback */
+  padding-left: clamp(1rem, 50vw - 20rem, 10vw);
+}
+header h1 a {
+  text-decoration: none;
+  color: inherit;
+}
+main {
+  margin: 1ex auto;
+  /* width: clamp(80vw, 40rem, 100vw - 2rem); */
+  min-width: 80vw;
+  width: 40rem;
+  max-width: calc(100vw - 2rem);
+}
+h2 {
+  margin: 1ex 0 0 0;
+}
+p {
+  margin: 1ex 0 1ex 0;
+}
+a {
+  text-decoration: underline;
+  color: hsl(220deg, 100%, 60%);
+}
+@media (prefers-color-scheme: dark) {
+  a {
+    color: hsl(220deg, 100%, 77%);
+  }
+}
+tt {
+  font-family: 'Sono', monospace;
+}
+tt.anybreak {
+  line-break: anywhere;
+}
+tt.code {
+  display: inline-block;
+  width: calc(100% - 0.8em);
+  margin-left: -0.1em;
+  overflow-x: scroll;
+  white-space: nowrap;
+  padding: 0.3ex 0.5em;
+  background: #fafafa;
+  border-radius: 0.5em;
+  border: #eee 0.05em solid;
+}
+tt.code br {
+  margin-right: 0.5em;
+}
+.command {
+  user-select: all;
+}
+.command::before {
+  content: '> ';
+  color: #ccc;
+}
+.command-output {
+  color: #81c;
+}
+@media (prefers-color-scheme: dark) {
+  tt.code {
+    background: #282828;
+    border-color: #333;
+  }
+  .command-output {
+    color: #e9f;
+  }
+}
+footer {
+  margin: 0;
+  padding: 0.5ex 1rem 1.5ex;  /* padding-left fallback */
+  padding-left: clamp(1rem, 50vw - 20rem, 10vw);
+
+  background-image: url(./banner_bg.svg);
+  background-position: bottom right;
+  background-repeat: no-repeat;
+  background-size: cover;
+}
+</style>
+<header>
+  <h1><a href='/'>ABRC</a></h1>
+</header>
+<main>
+{{ content }}
+</main>
+<footer>
+Made with ☁️
+</footer>
+</body></html>

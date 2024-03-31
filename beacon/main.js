@@ -699,7 +699,7 @@ Deno.serve({
       else timestamp = +timestamp
       return await savedPulseResp(timestamp, (format || '').substring(1))
     }
-    if (url.pathname === '/') {
+    if (url.pathname === '/' || url.pathname === '/verify') {
       const timestamp = latestPulseTimestamp()
       const output = await loadOutput(timestamp)
       let lookup = {}
@@ -739,9 +739,12 @@ Deno.serve({
           'details': details.filter((e) => e.length !== null),
         }
       }
-      const template = await Deno.readTextFile('page/index.html')
-      const content = renderTemplate(template, lookup)
-      return new Response(content, {
+      const pageName = url.pathname.substring(1) || 'index'
+      const templateFrame = await Deno.readTextFile('page/frame.html')
+      const templateContent = await Deno.readTextFile(`page/${pageName}.html`)
+      const content = renderTemplate(templateContent, lookup)
+      const page = renderTemplate(templateFrame, { content })
+      return new Response(page, {
         headers: { 'Content-Type': 'text/html; encoding=utf-8' }
       })
     }
