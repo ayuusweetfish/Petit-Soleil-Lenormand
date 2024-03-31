@@ -10,7 +10,8 @@ const sha3_512_hasher = await createSHA3(512)
 const sha3_512 = (a) => sha3_512_hasher.init().update(a).digest('binary')
 
 // --unstable-kv
-const isOnDenoDeploy = (Deno.env.get('DENO_DEPLOYMENT_ID') !== undefined)
+const deploymentId = Deno.env.get('DENO_DEPLOYMENT_ID')
+const isOnDenoDeploy = (deploymentId !== undefined)
 const kv = await Deno.openKv(isOnDenoDeploy ? undefined : 'kv.sqlite')
 
 const imageCacheServer = Deno.env.get('CACHE_SERVER') || 'http://localhost:3322'
@@ -642,9 +643,11 @@ Deno.exit(0)
 
 await initializeStates()
 // --unstable-cron
-Deno.cron('Initialize updates', '0 * * * *', initializeUpdate)
-Deno.cron('Check updates', '5-44/5 * * * *', () => checkUpdate(false))
-Deno.cron('Finalize updates', '45 * * * *', () => checkUpdate(true))
+// Deno Deploy Cron gets stuck?
+const cronSuffix = (deploymentId ? ' - ' + deploymentId.substring(0, 6) : '')
+Deno.cron('Initialize updates' + cronSuffix, '0 * * * *', initializeUpdate)
+Deno.cron('Check updates' + cronSuffix, '5-44/5 * * * *', () => checkUpdate(false))
+Deno.cron('Finalize updates' + cronSuffix, '45 * * * *', () => checkUpdate(true))
 // await checkUpdate(true) // For debug usage
 /*
 for (const k in current) delete current[k]
