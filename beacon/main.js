@@ -535,13 +535,26 @@ const checkUpdate = async (finalize, timestamp) => {
     for (let i = 0; i < 4096; i++)
       currentFinalizedDigest[i] ^= miscSourcesBlock[i]
     // Mix in previous output
-    const previousOutputStr = (await kv.get(['output', timestamp - 60 * 60000])).value
+    let previousOutputTimestamp, previousOutputStr
+    for await (const { key, value } of kv.list(
+      { prefix: ['output'], end: ['output', timestamp] },
+      { reverse: true }
+    )) {
+      if (key.length === 2) {
+        previousOutputTimestamp = key[1]
+        previousOutputStr = value
+        break
+      }
+    }
     if (previousOutputStr) {
+      persistLog(`Mixing with previous output ${previousOutputTimestamp}`)
+      if (previousOutputTimestamp !== timestamp - 60 * 60000)
+        persistLog(`Caveat: Validation instructions will not display correct values for this pulse`)
       const previousOutput = decodeHex(previousOutputStr)
       for (let i = 0; i < 4096; i++)
         currentFinalizedDigest[i] ^= previousOutput[i]
     } else {
-      persistLog('previous output not found, not mixing')
+      persistLog('Previous output not found, not mixing')
     }
 
     const op = kv.atomic()
@@ -550,6 +563,7 @@ const checkUpdate = async (finalize, timestamp) => {
     persistLog('finalized! timestamp ' + timestamp +
       ', files ' + filesHash + '...' +
       ', local ' + encodeHex(miscSourcesBlock.subarray(0, 8)) + '...' +
+      ', previous ' + (previousOutputStr ? previousOutputStr.substring(0, 16) + '...' : '(missing)') +
       ', output ' + encodeHex(currentFinalizedDigest.subarray(0, 8)) + '...' +
       ', precommit ' + encodeHex(miscSourcesNextHash.subarray(0, 8)) + '...')
     op.set(['output', timestamp], encodeHex(currentFinalizedDigest))
