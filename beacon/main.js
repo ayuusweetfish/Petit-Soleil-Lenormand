@@ -742,8 +742,14 @@ Deno.serve({
       const pageName = url.pathname.substring(1) || 'index'
       const templateFrame = await Deno.readTextFile('page/frame.html')
       const templateContent = await Deno.readTextFile(`page/${pageName}.html`)
-      const content = renderTemplate(templateContent, lookup)
-      const page = renderTemplate(templateFrame, { content })
+      let content = renderTemplate(templateContent, lookup)
+      let title
+      content = content.replace(/^<title>(.+)<\/title>\n/, (_, matchedTitle) => {
+        title = matchedTitle
+        return ''
+      })
+      title = (title ? (title + ' — ') : '')
+      const page = renderTemplate(templateFrame, { title, content })
       return new Response(page, {
         headers: { 'Content-Type': 'text/html; encoding=utf-8' }
       })
