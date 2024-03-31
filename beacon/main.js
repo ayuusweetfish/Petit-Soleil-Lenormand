@@ -699,7 +699,7 @@ Deno.serve({
       else timestamp = +timestamp
       return await savedPulseResp(timestamp, (format || '').substring(1))
     }
-    if (url.pathname === '/' || url.pathname === '/verify') {
+    if (url.pathname === '/' || url.pathname === '/verify' || url.pathname === '/gallery') {
       const timestamp = latestPulseTimestamp()
       const output = await loadOutput(timestamp)
       let lookup = {}

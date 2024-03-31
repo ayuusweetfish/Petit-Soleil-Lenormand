@@ -84,6 +84,11 @@ main {
   width: 40rem;
   max-width: calc(100vw - 2rem);
 }
+hr {
+  margin: 1ex -0.2em;
+  border: none;
+  border-bottom: 2px solid rgba(176, 176, 176, 50%);
+}
 h2 {
   margin: 1ex 0 0 0;
 }
@@ -140,13 +145,27 @@ tt.code br {
 }
 footer {
   margin: 0;
-  padding: 0.5ex 1rem 1.5ex;  /* padding-left fallback */
+  padding: 0.5ex 1rem 0;  /* padding-left fallback */
   padding-left: clamp(1rem, 50vw - 20rem, 10vw);
-
-  background-image: url(./banner_bg.svg);
-  background-position: bottom right;
-  background-repeat: no-repeat;
-  background-size: cover;
+  border-bottom: 4px solid rgba(176, 176, 176, 18%);
+}
+#footer-main {
+  margin-bottom: 1.5ex;
+}
+#footer-bg {
+  text-align: right;
+  height: 4.8em;
+  width: 100%;
+  margin-top: -4.8em;
+}
+#footer-bg > div {
+  z-index: -1;
+  background: no-repeat 100% 0 / cover url(./footer_bg.svg);
+  position: absolute;
+  height: 4.8em;
+  width: 100%;
+  max-width: 48em;
+  right: 0;
 }
 </style>
 <header>
@@ -156,6 +175,7 @@ footer {
 {{ content }}
 </main>
 <footer>
-Made with ☁️
+<div id='footer-main'>Made with ☁️<br>A</div>
+<div id='footer-bg'><div></div></div>
 </footer>
 </body></html>

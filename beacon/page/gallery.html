@@ -1,0 +1,31 @@
+<a href='/'>Home</a>
+<hr>
+
+<h2>Image gallery</h2>
+
+<style>
+#gallery {
+  text-align: center;
+}
+#gallery .gallery-cell {
+  display: inline-block;
+  margin: 1ex 1em;
+}
+#gallery .gallery-cell img {
+  width: 25vw;
+  min-width: 12.5em;
+}
+#gallery .gallery-cell p {
+  margin: 0;
+}
+</style>
+
+<div id='gallery'>
+  <p>{{ latestTimestampISO }} ({{ latestTimestamp }})</p>
+  {{~a' details
+  <div class='gallery-cell'>
+    <img src='{{ message }}'>
+    <p>{{ key }}</p>
+  </div>
+  a'~}}
+</div>
