@@ -679,6 +679,17 @@ const renderTemplate = (s, lookup, lang, extra) => {
   })
 }
 
+const parseCookies = (cookiesStr) => {
+  const cookies = {}
+  const regexp = /([A-Za-z0-9-_]+)=(.*?)(?:(?=;)|$)/g
+  let result
+  while ((result = regexp.exec(cookiesStr)) !== null) {
+    const [_, key, value] = result
+    cookies[decodeURIComponent(key)] = decodeURIComponent(value)
+  }
+  return cookies
+}
+
 const negotiateLang = (accept, supported) => {
   const list = accept.split(',').map((s) => {
     s = s.trim()
@@ -731,6 +742,28 @@ Deno.serve({
       return await savedPulseResp(timestamp, (format || '').substring(1))
     }
     if (url.pathname === '/' || url.pathname === '/verify' || url.pathname === '/gallery') {
+      // Basic request parameters
+      const pageName = url.pathname.substring(1) || 'index'
+      let selLang = url.search.substring(1)
+      if (selLang) {
+        const lang = negotiateLang(selLang, ['en', 'zh'])
+        const redirectUrl = url.origin + url.pathname
+        return new Response(
+          `<html><body>Redirecting to <a href='${redirectUrl}'>${redirectUrl}</a></body></html>`,
+          {
+            status: 303,
+            headers: {
+              'Location': redirectUrl,
+              'Set-Cookie': `lang=${lang}; SameSite=Strict; Path=/; Secure; Max-Age=86400`,
+            },
+          }
+        )
+      }
+      let cookieLang
+      if (!selLang) selLang = cookieLang = parseCookies(req.headers.get('Cookie') || '')['lang']
+      if (!selLang) selLang = req.headers.get('Accept-Language')
+      const lang = negotiateLang(selLang || '', ['en', 'zh'])
+
       const timestamp = latestPulseTimestamp()
       const output = await loadOutput(timestamp)
       let lookup = {}
@@ -770,10 +803,8 @@ Deno.serve({
           'details': details.filter((e) => e.length !== null),
         }
       }
-      const pageName = url.pathname.substring(1) || 'index'
-      const lang = negotiateLang(
-        url.search.substring(1) || req.headers.get('Accept-Language') || '',
-        ['en', 'zh'])
+
+      // Render page
       const templateFrame = await Deno.readTextFile('page/frame.html')
       const templateContent = await Deno.readTextFile(`page/${pageName}.html`)
       let content = renderTemplate(templateContent, lookup, lang)
@@ -784,9 +815,14 @@ Deno.serve({
       })
       title = (title ? (title + ' — ') : '')
       const page = renderTemplate(templateFrame, { title, content }, lang)
-      return new Response(page, {
-        headers: { 'Content-Type': 'text/html; encoding=utf-8' }
-      })
+      const headers = {
+        'Content-Type': 'text/html; encoding=utf-8',
+      }
+      if (cookieLang !== lang) {
+        headers['Set-Cookie'] =
+          `lang=${lang}; SameSite=Strict; Path=/; Secure; Max-Age=86400`
+      }
+      return new Response(page, { headers })
     }
     // Caches
     const urlPartsCache = url.pathname.match(/^\/cache\/([^\/]+)$/)
