@@ -13,11 +13,14 @@
   margin: 1ex 1em;
 }
 #gallery .gallery-cell img {
-  width: 25vw;
-  min-width: 12.5em;
-  height: 25vw;
-  min-height: 12.5em;
-  object-fit: cover;
+  width: 12.5em;
+  min-width: 25vw;
+  max-width: 100%;
+  aspect-ratio: 1;
+  /* aspect-ratio fallback */
+  height: 12.5em;
+  min-height: 25vw;
+  object-fit: contain;
 }
 #gallery .gallery-cell p {
   margin: 0;
@@ -29,7 +32,7 @@
   {{~a' details
   <div class='gallery-cell'>
     <img src='{{ message }}'>
-    <p>{{ key }}</p>
+    <p lang='en'>{{ key }}</p>
   </div>
   a'~}}
 </div>

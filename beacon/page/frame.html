@@ -51,11 +51,9 @@ body {
     color: #f4f4f4;
   }
 }
-/*
 body:lang(zh), *[lang='zh'] {
   font-family: 'Chill Yunmo', 'ABeeZee', sans-serif;
 }
-*/
 header {
   margin: 0 0 -0.5ex;
   /* Disable collapsing of padding */
@@ -81,6 +79,7 @@ header h1 a {
   color: inherit;
 }
 header #lang-sel {
+  font-family: 'ABeeZee', sans-serif;
   position: absolute;
   top: 1ex;
   right: 1em;
@@ -178,8 +177,8 @@ footer {
 </style>
 <header>
   <h1><a href='/'>ABRC</a></h1>
-{{@zh}}  <div id='lang-sel'><a href='?en'>en</a></div>
-{{@en}}  <div id='lang-sel'><a href='?zh'>zh</a></div>
+{{@zh}}  <div id='lang-sel'>zh | <a href='?en'>en</a></div>
+{{@en}}  <div id='lang-sel'>en | <a href='?zh'>zh</a></div>
 </header>
 <main>
 {{ content }}
