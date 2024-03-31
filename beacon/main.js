@@ -72,11 +72,12 @@ const fetchImage = async (url, modifiedAfter, modifiedBefore, cache) => {
   const resp = await fetch(url)
   const modifiedAt = (resp.headers.has('Last-Modified') ?
     new Date(resp.headers.get('Last-Modified')) : undefined)
-  if (modifiedAfter !== undefined) {
+  if (modifiedAfter !== undefined || modifiedBefore !== undefined) {
     if (modifiedAt === undefined) {
       throw new Error(`Do not know when last modified (${url})`)
     }
-    if (modifiedAt < modifiedAfter || modifiedAt > modifiedBefore) {
+    if ((modifiedAfter && modifiedAt < modifiedAfter) ||
+        (modifiedBefore && modifiedAt > modifiedBefore)) {
       throw new Error(`Modification timestamp ${modifiedAt.toISOString()} not in ${modifiedAfter.toISOString()}/${modifiedBefore.toISOString()} (${url})`)
     }
   }
@@ -253,8 +254,7 @@ const src_elektro_l3 = src_elektro_l('splash_l3')
 
 const src_sdo = (type) => async (timestamp) => {
   return await fetchImage(`https://sdo.gsfc.nasa.gov/assets/img/latest/latest_1024_${type}.jpg`,
-    new Date(timestamp - 20 * 60000),
-    new Date(timestamp + 20 * 60000))
+    new Date(timestamp - 20 * 60000))
 }
 const src_sdo_193 = src_sdo('0193')
 
