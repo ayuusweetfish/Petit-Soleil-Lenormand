@@ -181,6 +181,16 @@ footer {
   max-width: 48em;
   right: 0;
 }
+.emoji {
+  font-family: 'ABeeZee', 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', 'Android Emoji', 'EmojiSymbols', 'EmojiOne Mozilla', 'Twemoji Mozilla', 'Segoe UI Symbol', 'Noto Color Emoji Compat', emoji, sans-serif;
+  vertical-align: middle;
+}
+.emoji-icon {
+  width: 1em;
+  height: 1em;
+  display: inline-block;
+  object-fit: contain;
+}
 </style>
 <header>
   <h1><a href='/'>ABRC</a></h1>
@@ -191,7 +201,7 @@ footer {
 {{ content }}
 </main>
 <footer>
-<div id='footer-main'>Made with ☁️{{ randomEmoji }}<br>A</div>
+<div id='footer-main'>Made with <span class='emoji'><img class='emoji-icon' alt='☁️' src='https://cdn.jsdelivr.net/gh/jdecked/twemoji@15.0.2/assets/svg/2601.svg'>{{ randomEmoji }}</span><br>A</div>
 <div id='footer-bg'><div></div></div>
 </footer>
 </body></html>

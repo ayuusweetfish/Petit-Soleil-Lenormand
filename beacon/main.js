@@ -507,7 +507,7 @@ let currentFinalizedDigestTimestamp = null
 const currentPulseTimestamp = (absolute) => {
   const timestamp = Date.now() + (absolute ? 0 : 3 * 60000)
   return timestamp - timestamp % (60 * 60000)
-    // + 60 * 60000 // For debug usage
+    - 60 * 60000 // For debug usage
 }
 const latestPulseTimestamp = () => currentPulseTimestamp(true) - 60 * 60000
 
@@ -841,8 +841,9 @@ Deno.serve({
       } else {
         const emojis = Array.from(
           '🍇🍈🍉🍊🍋🍌🍍🥭🍎🍏🍐🍑🍒🍓🫐🥝🍅🫒🥥🥑🍆🥔🥕🌽🌶🫑🥒🥬🥦🧄🧅🥜🫘🌰🫚🫛🍦🍧🍨🍩🍪🎂🍰🧁🥧🍫🍬🍭🍮🍯' +
-          '🎃🎆🎇🧨✨🎈🎉🎊🎐🎑🏮💖💟❣❤🩷🧡💛💚💙🩵💜🤎🖤🩶🤍🎵🎶🎹🥁🔮🎨🌈🫧🎀'
-        )
+          '⭐🌟🌠🌌💐🌸💮🪷🏵️🌹🥀🌺🌻🌼🌷🪻🌱🪴🌲🌳🌴🌵🌾🌿☘️🍀🍁🍂🍃🍄🪨🪵' +
+          '🎃🎆🎇🧨✨🎈🎉🎊🎐🎑🏮💖💟❣❤🩷🧡💛💚💙🩵💜🤎🖤🩶🤍🎵🎶🎹🥁🔮🪁🪄🎨🌈🫧🎀'
+        ).filter((c) => c.codePointAt(0) !== 0xfe0f)
         // console.log(emojis.length)
         // for (const emoji of emojis) console.log(`${emoji.length} ${emoji.codePointAt(0).toString(16)} [${emoji}]`)
         const minute = (new Date()).getMinutes()
@@ -852,7 +853,8 @@ Deno.serve({
         let n = 0
         for (let i = start; i < end; i++)
           n = (n + latestResultOutput[i]) % emojis.length
-        lookup.randomEmoji = ' + ' + emojis[n]
+        const char = emojis[n]
+        lookup.randomEmoji = ` + <img class='emoji-icon' alt='${char}' src='https://cdn.jsdelivr.net/gh/jdecked/twemoji@15.0.2/assets/svg/${char.codePointAt(0).toString(16)}.svg'>`
       }
 
       // Render page
