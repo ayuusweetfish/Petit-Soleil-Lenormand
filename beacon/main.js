@@ -680,6 +680,9 @@ const savedPulseResp = async (timestamp, format) => {
   return jsonResp(obj)
 }
 
+let latestResultLookup = {}
+let latestResultLookupTimestamp = null
+
 const renderTemplate = (s, lookup, lang, extra) => {
   extra = extra || {}
   extra.lang = (lang === 'zh' ? 'zh-Hans' : lang)
@@ -782,44 +785,52 @@ Deno.serve({
       const lang = negotiateLang(selLang || '', ['en', 'zh'])
 
       const timestamp = latestPulseTimestamp()
-      const output = await loadOutput(timestamp)
-      let lookup = {}
-      if (output) {
-        const details = await loadOutputDetails(timestamp)
-        for (const entry of details) {
-          const cacheMatch = entry.message.match(/^([^ ]*) \(cached .+\)$/)
-          if (cacheMatch) entry.message = cacheMatch[1]
-          const basenameMatch = entry.message.match(/\.([^/\.]+)$/)
-          entry.extension = (basenameMatch ? basenameMatch[1] :
-            (entry.message.startsWith('https://eumetview.eumetsat.int') ? 'jpg' : 'bin'))
-        }
-        // Previous output
-        const previousOutputStr = (await kv.get(['output', timestamp - 60 * 60000])).value
-        const previousOutput = (previousOutputStr ?
-          decodeHex(previousOutputStr) : new Uint8Array(4096))
-        // Recover the hash of files
-        const filesHash = decodeHex(output)
-        const localRandomnessArray = await miscSourceBlockForTimestamp(timestamp)
-        for (let i = 0; i < 4096; i++)
-          filesHash[i] ^= (localRandomnessArray[i] ^ previousOutput[i])
+      const lookup = {}
 
-        const prefixSuffix = (s) => {
-          if (s instanceof Uint8Array) s = encodeHex(s)
-          return (s.substring(0, 16) + '...' + s.substring(s.length - 16))
-        }
-        lookup = {
-          'latestTimestamp': timestamp,
-          'latestTimestampISO': (new Date(timestamp)).toISOString(),
-          // 'latestPrefix': output.substring(0, 16) + '...',
-          'latestOutputPrefixSuffix': prefixSuffix(output),
-          'contentHashPrefixSuffix': prefixSuffix(filesHash),
-          'previousOutputPrefixSuffix': prefixSuffix(previousOutput),
-          'localRandomnessPrefixSuffix': prefixSuffix(localRandomnessArray),
-          'previousTimestamp': timestamp - 60 * 60000,
-          'precommitment': prefixSuffix(await miscSourceBlockHashForTimestamp(timestamp)),
-          'details': details.filter((e) => e.length !== null),
+      if (latestResultLookupTimestamp !== timestamp) {
+        const output = await loadOutput(timestamp)
+        if (output) {
+          const details = await loadOutputDetails(timestamp)
+          for (const entry of details) {
+            const cacheMatch = entry.message.match(/^([^ ]*) \(cached .+\)$/)
+            if (cacheMatch) entry.message = cacheMatch[1]
+            const basenameMatch = entry.message.match(/\.([^/\.]+)$/)
+            entry.extension = (basenameMatch ? basenameMatch[1] :
+              (entry.message.startsWith('https://eumetview.eumetsat.int') ? 'jpg' : 'bin'))
+          }
+          // Previous output
+          const previousOutputStr = (await kv.get(['output', timestamp - 60 * 60000])).value
+          const previousOutput = (previousOutputStr ?
+            decodeHex(previousOutputStr) : new Uint8Array(4096))
+          // Recover the hash of files
+          const filesHash = decodeHex(output)
+          const localRandomnessArray = await miscSourceBlockForTimestamp(timestamp)
+          for (let i = 0; i < 4096; i++)
+            filesHash[i] ^= (localRandomnessArray[i] ^ previousOutput[i])
+
+          const prefixSuffix = (s) => {
+            if (s instanceof Uint8Array) s = encodeHex(s)
+            return (s.substring(0, 16) + '...' + s.substring(s.length - 16))
+          }
+          latestResultLookup = {
+            'latestTimestamp': timestamp,
+            'latestTimestampISO': (new Date(timestamp)).toISOString(),
+            // 'latestPrefix': output.substring(0, 16) + '...',
+            'latestOutputPrefixSuffix': prefixSuffix(output),
+            'contentHashPrefixSuffix': prefixSuffix(filesHash),
+            'previousOutputPrefixSuffix': prefixSuffix(previousOutput),
+            'localRandomnessPrefixSuffix': prefixSuffix(localRandomnessArray),
+            'previousTimestamp': timestamp - 60 * 60000,
+            'precommitment': prefixSuffix(await miscSourceBlockHashForTimestamp(timestamp)),
+            'details': details.filter((e) => e.length !== null),
+          }
+          latestResultLookupTimestamp = timestamp
+        } else {
+          latestResultLookup = {}
+          latestResultLookupTimestamp = null
         }
       }
+      Object.assign(lookup, latestResultLookup)
 
       // Render page
       const templateFrame = await Deno.readTextFile('page/frame.html')
