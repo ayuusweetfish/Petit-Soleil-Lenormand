@@ -682,6 +682,7 @@ const savedPulseResp = async (timestamp, format) => {
 
 let latestResultLookup = {}
 let latestResultLookupTimestamp = null
+let latestResultOutput = null
 
 const renderTemplate = (s, lookup, lang, extra) => {
   extra = extra || {}
@@ -789,8 +790,8 @@ Deno.serve({
 
       if (latestResultLookupTimestamp !== timestamp) {
         const output = await loadOutput(timestamp)
-        if (output) {
-          const details = await loadOutputDetails(timestamp)
+        const details = await loadOutputDetails(timestamp)
+        if (output && details) {
           for (const entry of details) {
             const cacheMatch = entry.message.match(/^([^ ]*) \(cached .+\)$/)
             if (cacheMatch) entry.message = cacheMatch[1]
@@ -814,7 +815,8 @@ Deno.serve({
           }
           latestResultLookup = {
             'latestTimestamp': timestamp,
-            'latestTimestampISO': (new Date(timestamp)).toISOString(),
+            'latestTimestampISO': (new Date(timestamp)).toISOString()
+              .replace('T', ' ').replace(':00.000Z', ' UTC'),
             // 'latestPrefix': output.substring(0, 16) + '...',
             'latestOutputPrefixSuffix': prefixSuffix(output),
             'contentHashPrefixSuffix': prefixSuffix(filesHash),
@@ -825,12 +827,33 @@ Deno.serve({
             'details': details.filter((e) => e.length !== null),
           }
           latestResultLookupTimestamp = timestamp
+          latestResultOutput = decodeHex(output)
         } else {
           latestResultLookup = {}
           latestResultLookupTimestamp = null
+          latestResultOutput = null
         }
       }
       Object.assign(lookup, latestResultLookup)
+
+      if (latestResultOutput === null) {
+        lookup.randomEmoji = ''
+      } else {
+        const emojis = Array.from(
+          '🍇🍈🍉🍊🍋🍌🍍🥭🍎🍏🍐🍑🍒🍓🫐🥝🍅🫒🥥🥑🍆🥔🥕🌽🌶🫑🥒🥬🥦🧄🧅🥜🫘🌰🫚🫛🍦🍧🍨🍩🍪🎂🍰🧁🥧🍫🍬🍭🍮🍯' +
+          '🎃🎆🎇🧨✨🎈🎉🎊🎐🎑🏮💖💟❣❤🩷🧡💛💚💙🩵💜🤎🖤🩶🤍🎵🎶🎹🥁🔮🎨🌈🫧🎀'
+        )
+        // console.log(emojis.length)
+        // for (const emoji of emojis) console.log(`${emoji.length} ${emoji.codePointAt(0).toString(16)} [${emoji}]`)
+        const minute = (new Date()).getMinutes()
+        // const minute = Math.floor((new Date() - latestResultLookupTimestamp) / 60000) - 60
+        const start = Math.floor(4096 * minute / 60)
+        const end = Math.floor(4096 * (minute + 1) / 60)
+        let n = 0
+        for (let i = start; i < end; i++)
+          n = (n + latestResultOutput[i]) % emojis.length
+        lookup.randomEmoji = ' + ' + emojis[n]
+      }
 
       // Render page
       const templateFrame = await Deno.readTextFile('page/frame.html')
@@ -842,7 +865,8 @@ Deno.serve({
         return ''
       })
       title = (title ? (title + ' — ') : '')
-      const page = renderTemplate(templateFrame, { title, content }, lang)
+      Object.assign(lookup, { title, content })
+      const page = renderTemplate(templateFrame, lookup, lang)
       const headers = {
         'Content-Type': 'text/html; encoding=utf-8',
       }

@@ -133,21 +133,28 @@ tt.code br {
 }
 .command {
   user-select: all;
+  color: #333;
 }
 .command::before {
   content: '> ';
   color: #ccc;
 }
-.command-output {
-  color: #81c;
+.command-output, .output-highlight {
+  color: hsl(320deg, 65%, 55%);
 }
 @media (prefers-color-scheme: dark) {
   tt.code {
     background: #282828;
     border-color: #333;
   }
-  .command-output {
-    color: #e9f;
+  .command {
+    color: #eee;
+  }
+  .command-output, .output-highlight {
+    color: hsl(320deg, 85%, 80%);
+  }
+  .command::before {
+    color: #5a5a5a;
   }
 }
 footer {
@@ -184,7 +191,7 @@ footer {
 {{ content }}
 </main>
 <footer>
-<div id='footer-main'>Made with ☁️<br>A</div>
+<div id='footer-main'>Made with ☁️{{ randomEmoji }}<br>A</div>
 <div id='footer-bg'><div></div></div>
 </footer>
 </body></html>
