@@ -185,6 +185,7 @@ void setup_clocks()
 int main()
 {
   HAL_Init();
+  // HAL_PWR_EnterSTOPMode(PWR_LOWPOWERREGULATOR_ON, PWR_STOPENTRY_WFI);
 
   // ======== GPIO ========
   __HAL_RCC_GPIOA_CLK_ENABLE();
