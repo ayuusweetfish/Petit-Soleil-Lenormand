@@ -507,7 +507,7 @@ let currentFinalizedDigestTimestamp = null
 const currentPulseTimestamp = (absolute) => {
   const timestamp = Date.now() + (absolute ? 0 : 3 * 60000)
   return timestamp - timestamp % (60 * 60000)
-    - 60 * 60000 // For debug usage
+    // + 60 * 60000 // For debug usage
 }
 const latestPulseTimestamp = () => currentPulseTimestamp(true) - 60 * 60000
 
