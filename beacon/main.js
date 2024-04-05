@@ -252,6 +252,12 @@ const src_elektro_l = (type) => async (timestamp) => {
 const src_elektro_l2 = src_elektro_l('splash')
 const src_elektro_l3 = src_elektro_l('splash_l3')
 
+/*
+const src_dwd = () => {
+  return await fetchImage(`https://www.dwd.de/DWD/wetter/wmc/icodet/precip/rr06_world_N_000006_000000_202404050000.png`)
+}
+*/
+
 const src_sdo = (type) => async (timestamp) => {
   return await fetchImage(`https://sdo.gsfc.nasa.gov/assets/img/latest/latest_1024_${type}.jpg`,
     new Date(timestamp - 20 * 60000))
