@@ -215,9 +215,9 @@ const src_meteosat_ir108 = src_meteosat_eumetsat('IR108')
 
 const src_imd = (type) => async (timestamp) => {
   timestamp -= timestamp % (15 * 60000)
-  return await fetchImage(`http://satellite.imd.gov.in/imgr/globe_${type}.jpg`,
+  return await fetchImage(`https://mausam.imd.gov.in/Satellite/3Dglobe_${type}.jpg`,
     new Date(timestamp),
-    new Date(timestamp + 30 * 60000),
+    new Date(timestamp + 45 * 60000),
     true)
 }
 const src_imd_ir1 = src_imd('ir1')
