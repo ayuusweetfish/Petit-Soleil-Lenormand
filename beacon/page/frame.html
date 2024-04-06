@@ -20,10 +20,18 @@
   src: url(./ABeeZee-Regular.woff2);
 }
 @font-face {
+  font-family: 'ABeeZee';
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: url(./ABeeZee-Italic.woff2);
+}
+@font-face {
   font-family: 'Chill Yunmo';
   font-style: normal;
   font-weight: 400;
   font-display: swap;
+  unicode-range: U+4e00-9fff, U+3400-4dbf, U+3000-303f, U+2000-206f, U+ff00-ffef, U+00b7;
   src: url(./ChillYunmoGothicMedium_subset.woff2);
   /* src: url(./ChillYunmoGothicMedium_scaled.ttf); /* For debug usage */
 }
@@ -54,6 +62,9 @@ body {
 body:lang(zh), *[lang='zh'] {
   font-family: 'Chill Yunmo', 'ABeeZee', sans-serif;
 }
+*:not(:lang(zh)) {
+  font-family: 'ABeeZee', 'Chill Yunmo', sans-serif;
+}
 header {
   margin: 0 0 -0.5ex;
   /* Disable collapsing of padding */
@@ -65,8 +76,10 @@ header {
   background-repeat: none;
   background-size: cover;
 }
+header h1, header h1 * {
+  font-family: 'Borel Sans' !important;
+}
 header h1 {
-  font-family: 'Borel Sans';
   font-size: 2.5rem;
   letter-spacing: 0.075em;
   line-height: 1;
@@ -110,6 +123,11 @@ a {
   a {
     color: hsl(220deg, 100%, 77%);
   }
+}
+blockquote {
+  margin: 1em 1em;
+  padding: 0 1em;
+  border-left: 4px solid rgba(176, 176, 176, 50%);
 }
 tt {
   font-family: 'Sono', monospace;
@@ -183,13 +201,13 @@ footer {
 }
 .emoji {
   font-family: 'ABeeZee', 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', 'Android Emoji', 'EmojiSymbols', 'EmojiOne Mozilla', 'Twemoji Mozilla', 'Segoe UI Symbol', 'Noto Color Emoji Compat', emoji, sans-serif;
-  vertical-align: middle;
 }
 .emoji-icon {
   width: 1em;
   height: 1em;
   display: inline-block;
   object-fit: contain;
+  vertical-align: middle;
 }
 </style>
 <header>

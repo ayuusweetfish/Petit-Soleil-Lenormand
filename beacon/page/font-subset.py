@@ -1,4 +1,4 @@
-# IN_PATH=~/Downloads/ChillYunmoGothicMedium.otf OUT_PATH=ChillYunmoGothicMedium_subset.ttf TEXT=`cat index.html | perl -CIO -pe 's/[\p{ASCII} \N{U+2500}-\N{U+257F}]//g'` /Applications/FontForge.app/Contents/Resources/opt/local/bin/fontforge -lang=py -script font-subset.py
+# IN_PATH=~/Downloads/ChillYunmoGothicMedium.otf OUT_PATH=ChillYunmoGothicMedium_subset.ttf TEXT=`cat *.html | perl -CIO -pe 's/[^\N{U+4e00}-\N{U+9fff}\N{U+3400}-\N{U+4dbf}\N{U+3000}-\N{U+303f}\N{U+2000}-\N{U+206f}\N{U+ff00}-\N{U+ffef}\N{U+00b7}]//g'` /Applications/FontForge.app/Contents/Resources/opt/local/bin/fontforge -lang=py -script font-subset.py
 # woff2_compress ChillYunmoGothicMedium_subset.ttf; rm ChillYunmoGothicMedium_subset.ttf
 import fontforge
 import psMat
