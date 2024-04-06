@@ -62,7 +62,7 @@ body {
 body:lang(zh), *[lang='zh'] {
   font-family: 'Chill Yunmo', 'ABeeZee', sans-serif;
 }
-*:not(:lang(zh)) {
+*[lang]:not([lang='zh']) {
   font-family: 'ABeeZee', 'Chill Yunmo', sans-serif;
 }
 header {
@@ -121,7 +121,7 @@ a {
 }
 @media (prefers-color-scheme: dark) {
   a {
-    color: hsl(220deg, 100%, 77%);
+    color: hsl(220deg, 100%, 79%);
   }
 }
 blockquote {
@@ -158,7 +158,7 @@ tt.code br {
   color: #ccc;
 }
 .command-output, .output-highlight {
-  color: hsl(320deg, 65%, 55%);
+  color: hsl(320deg, 75%, 48%);
 }
 @media (prefers-color-scheme: dark) {
   tt.code {
@@ -169,7 +169,7 @@ tt.code br {
     color: #eee;
   }
   .command-output, .output-highlight {
-    color: hsl(320deg, 85%, 80%);
+    color: hsl(320deg, 87%, 82%);
   }
   .command::before {
     color: #5a5a5a;
