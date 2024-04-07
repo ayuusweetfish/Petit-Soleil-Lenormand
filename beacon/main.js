@@ -768,6 +768,13 @@ Deno.serve({
       else timestamp = +timestamp
       return await savedPulseResp(timestamp, (format || '').substring(1))
     }
+    const urlPartsEmoji = url.pathname.match(/^\/emoji\/([0-9a-f]+)\.svg$/)
+    if (urlPartsEmoji) {
+      const headers = new Headers(req.headers)
+      return fetch(
+        `https://cdn.jsdelivr.net/gh/jdecked/twemoji@15.0.2/assets/svg/${urlPartsEmoji[1]}.svg`,
+        { headers })
+    }
     if (url.pathname === '/' || url.pathname === '/verify' || url.pathname === '/gallery') {
       // Basic request parameters
       const pageName = url.pathname.substring(1) || 'index'
@@ -860,7 +867,7 @@ Deno.serve({
         for (let i = start; i < end; i++)
           n = (n + latestResultOutput[i]) % emojis.length
         const char = emojis[n]
-        lookup.randomEmoji = ` + <img class='emoji-icon' alt='${char}' src='https://cdn.jsdelivr.net/gh/jdecked/twemoji@15.0.2/assets/svg/${char.codePointAt(0).toString(16)}.svg'>`
+        lookup.randomEmoji = ` + <img class='emoji-icon' alt='${char}' src='/emoji/${char.codePointAt(0).toString(16)}.svg'>`
       }
 
       // Render page
