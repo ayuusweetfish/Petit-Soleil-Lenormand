@@ -186,18 +186,22 @@ footer {
 }
 #footer-bg {
   text-align: right;
-  height: 4.8em;
+  height: 12em;
   width: 100%;
-  margin-top: -4.8em;
+  margin-top: -12em;
+  position: relative;
 }
 #footer-bg > div {
   z-index: -1;
-  background: no-repeat 100% 0 / cover url(./footer_bg.svg);
+  background: no-repeat 100% 100% / cover url(./footer_bg.svg);
   position: absolute;
-  height: 4.8em;
+  height: 15vw;
+  min-height: 6em;
+  max-height: 12em;
   width: 100%;
-  max-width: 48em;
+  max-width: 120em;
   right: 0;
+  bottom: 0;
 }
 .emoji {
   font-family: 'ABeeZee', 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', 'Android Emoji', 'EmojiSymbols', 'EmojiOne Mozilla', 'Twemoji Mozilla', 'Segoe UI Symbol', 'Noto Color Emoji Compat', emoji, sans-serif;
@@ -220,6 +224,6 @@ footer {
 </main>
 <footer>
 <div id='footer-main'>Made with <span class='emoji'><img class='emoji-icon' alt='☁️' src='/emoji/2601.svg'>{{ randomEmoji }}</span><br>Ayu</div>
-<div id='footer-bg'><div></div></div>
 </footer>
+<div id='footer-bg'><div></div></div>
 </body></html>
