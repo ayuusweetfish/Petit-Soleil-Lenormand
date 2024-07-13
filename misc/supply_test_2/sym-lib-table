@@ -1,0 +1,5 @@
+(sym_lib_table
+  (version 7)
+  (lib (name "Soleil_symbols")(type "KiCad")(uri "${KIPRJMOD}/Soleil_symbols.kicad_sym")(options "")(descr ""))
+  (lib (name "TPS61020DRCR")(type "KiCad")(uri "${KIPRJMOD}/libs/TPS61020DRCR/TPS61020DRCR.kicad_sym")(options "")(descr ""))
+)

@@ -1,0 +1,5 @@
+(fp_lib_table
+  (version 7)
+  (lib (name "Soleil_footprints")(type "KiCad")(uri "${KIPRJMOD}/Soleil_footprints.pretty")(options "")(descr ""))
+  (lib (name "TPS61020DRCR")(type "KiCad")(uri "${KIPRJMOD}/libs/TPS61020DRCR/TPS61020DRCR.pretty")(options "")(descr ""))
+)

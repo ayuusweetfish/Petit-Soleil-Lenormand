@@ -1,0 +1,9 @@
+EESchema-DOCLIB  Version 2.0
+#
+$CMP TPS61020DRCR
+D Texas Instruments TPS61020DRCR, Boost Converter, Step Up 1.2A Adjustable, 1.8  5.5 V, 720 kHz, 10-Pin SON
+K
+F http://www.ti.com/lit/gpn/tps61020
+$ENDCMP
+#
+#End Doc Library
