@@ -213,12 +213,17 @@ int main()
   gpio_init.Pull = GPIO_PULLDOWN;
   HAL_GPIO_Init(GPIOB, &gpio_init);
   HAL_GPIO_WritePin(GPIOB, PIN_LED_R | PIN_LED_G | PIN_LED_B, GPIO_PIN_RESET);
+
+  HAL_GPIO_WritePin(GPIOB, PIN_LED_R | PIN_LED_G | PIN_LED_B, GPIO_PIN_SET); HAL_Delay(500);
+  HAL_GPIO_WritePin(GPIOB, PIN_LED_R | PIN_LED_G | PIN_LED_B, GPIO_PIN_RESET); HAL_Delay(500);
+/*
   while (1) {
     HAL_GPIO_WritePin(GPIOB, PIN_LED_R | PIN_LED_G | PIN_LED_B, GPIO_PIN_SET); HAL_Delay(500);
     HAL_GPIO_WritePin(GPIOB, PIN_LED_R | PIN_LED_G | PIN_LED_B, GPIO_PIN_RESET); HAL_Delay(500);
   }
   while (1)
     HAL_PWR_EnterSLEEPMode(PWR_MAINREGULATOR_ON, PWR_SLEEPENTRY_WFI);
+*/
 
   // Clocks
   setup_clocks();
@@ -531,7 +536,7 @@ print(', '.join('%d' % round(8000*(1+sin(i/N*2*pi))) for i in range(N)))
     // HAL_PWR_EnterSTOPMode(PWR_LOWPOWERREGULATOR_ON, PWR_STOPENTRY_WFI);
     HAL_ResumeTick();
     while (HAL_GPIO_ReadPin(GPIOA, PIN_BUTTON) == 1)
-      sleep_delay(100);
+      sleep_delay(10);
 
     for (int i = 0; i < N * 3; i++) {
     #if REV == 5
@@ -612,6 +617,7 @@ if (1) {
 */
 }
     // sleep_delay(1500);
+    TIM14->CCR1 = TIM16->CCR1 = TIM17->CCR1 = 0;
   }
 
   for (int i = 0; i < 10; i++) {
