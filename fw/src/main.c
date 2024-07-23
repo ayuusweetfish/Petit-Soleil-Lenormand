@@ -16,6 +16,7 @@
 #define PIN_EP_BUSY   GPIO_PIN_12
 #define PIN_BUTTON    GPIO_PIN_2
 #define EXTI_LINE_BUTTON  EXTI_LINE_2
+#define PIN_PWR_LATCH GPIO_PIN_3
 #elif REV == 4
 #define PIN_LED_R     GPIO_PIN_6
 #define PIN_LED_G     GPIO_PIN_7
@@ -224,6 +225,16 @@ int main()
   while (1)
     HAL_PWR_EnterSLEEPMode(PWR_MAINREGULATOR_ON, PWR_SLEEPENTRY_WFI);
 */
+
+  // ======= Power latch ======
+  gpio_init = (GPIO_InitTypeDef){
+    .Pin = PIN_PWR_LATCH,
+    .Mode = GPIO_MODE_OUTPUT_PP,
+    .Pull = GPIO_NOPULL,
+    .Speed = GPIO_SPEED_FREQ_LOW,
+  };
+  HAL_GPIO_Init(GPIOA, &gpio_init);
+  HAL_GPIO_WritePin(GPIOA, PIN_PWR_LATCH, 1);
 
   // Clocks
   setup_clocks();
