@@ -97,9 +97,24 @@ static inline void _epd_cmd(uint8_t cmd, uint8_t *params, size_t params_size)
   uint8_t params[] = { __VA_ARGS__ }; \
   _epd_cmd(_cmd, params, sizeof params); \
 } while (0)
-static inline void epd_waitbusy()
+static inline bool epd_waitbusy()
 {
-  while (HAL_GPIO_ReadPin(GPIOA, PIN_EP_BUSY) == GPIO_PIN_SET) { }
+  // while (HAL_GPIO_ReadPin(GPIOA, PIN_EP_BUSY) == GPIO_PIN_SET) { }
+  uint32_t t0 = HAL_GetTick();
+  while (HAL_GPIO_ReadPin(GPIOA, PIN_EP_BUSY) == GPIO_PIN_SET)
+    if (HAL_GetTick() - t0 > 5000) {
+      // Fail!
+      TIM14->CCR1 = TIM16->CCR1 = TIM17->CCR1 = 0;
+      for (int i = 0; i < 3; i++) {
+        TIM16->CCR1 = 6000; HAL_Delay(100);
+        TIM16->CCR1 =    0; HAL_Delay(100);
+      }
+      HAL_GPIO_WritePin(GPIOA, PIN_PWR_LATCH, 0);
+      HAL_Delay(1000);
+      NVIC_SystemReset();
+      return false;
+    }
+  return true;
 }
 
 // ffmpeg -i ~/Downloads/089-Sunset-2.png -f rawvideo -pix_fmt gray8 - 2>/dev/null | ./rle
@@ -155,21 +170,18 @@ void sleep_delay(uint32_t ticks)
 {
   uint32_t t0 = HAL_GetTick();
   while (HAL_GetTick() - t0 < ticks) {
-    HAL_PWR_EnterSLEEPMode(PWR_MAINREGULATOR_ON, PWR_SLEEPENTRY_WFI);
+    // HAL_PWR_EnterSLEEPMode(PWR_MAINREGULATOR_ON, PWR_SLEEPENTRY_WFI);
   }
 }
 
 void setup_clocks()
 {
+  HAL_PWREx_EnableLowPowerRunMode();
+
   RCC_OscInitTypeDef osc_init = { 0 };
   osc_init.OscillatorType = RCC_OSCILLATORTYPE_HSI;
   osc_init.HSIState = RCC_HSI_ON;
-  osc_init.PLL.PLLState = RCC_PLL_ON;
-  osc_init.PLL.PLLSource = RCC_PLLSOURCE_HSI;
-  osc_init.PLL.PLLM = RCC_PLLM_DIV2;
-  osc_init.PLL.PLLN = 8;
-  osc_init.PLL.PLLP = RCC_PLLP_DIV2;
-  osc_init.PLL.PLLR = RCC_PLLR_DIV2;
+  osc_init.PLL.PLLState = RCC_PLL_OFF;
   HAL_RCC_OscConfig(&osc_init);
 
   RCC_ClkInitTypeDef clk_init = { 0 };
@@ -177,9 +189,9 @@ void setup_clocks()
     RCC_CLOCKTYPE_SYSCLK |
     RCC_CLOCKTYPE_HCLK |
     RCC_CLOCKTYPE_PCLK1;
-  clk_init.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;  // 64 MHz
-  clk_init.AHBCLKDivider = RCC_SYSCLK_DIV16;    // 4 MHz
-  clk_init.APB1CLKDivider = RCC_HCLK_DIV1;      // 4 MHz
+  clk_init.SYSCLKSource = RCC_SYSCLKSOURCE_HSI; // 16 MHz
+  clk_init.AHBCLKDivider = RCC_SYSCLK_DIV4;     // 4 MHz
+  clk_init.APB1CLKDivider = RCC_HCLK_DIV4;      // 4 MHz
   HAL_RCC_ClockConfig(&clk_init, FLASH_LATENCY_2);
 }
 
@@ -209,6 +221,17 @@ int main()
   gpio_init.Speed = GPIO_SPEED_FREQ_HIGH;
   HAL_GPIO_Init(GPIOA, &gpio_init);
 
+  // ======= Power latch ======
+  gpio_init = (GPIO_InitTypeDef){
+    .Pin = PIN_PWR_LATCH,
+    .Mode = GPIO_MODE_OUTPUT_PP,
+    .Pull = GPIO_NOPULL,
+    .Speed = GPIO_SPEED_FREQ_LOW,
+  };
+  HAL_GPIO_Init(GPIOA, &gpio_init);
+  HAL_GPIO_WritePin(GPIOA, PIN_PWR_LATCH, 1);
+
+  // ======= Lights ======
   gpio_init.Pin = PIN_LED_R | PIN_LED_G | PIN_LED_B;
   gpio_init.Mode = GPIO_MODE_OUTPUT_PP;
   gpio_init.Pull = GPIO_PULLDOWN;
@@ -225,16 +248,6 @@ int main()
   while (1)
     HAL_PWR_EnterSLEEPMode(PWR_MAINREGULATOR_ON, PWR_SLEEPENTRY_WFI);
 */
-
-  // ======= Power latch ======
-  gpio_init = (GPIO_InitTypeDef){
-    .Pin = PIN_PWR_LATCH,
-    .Mode = GPIO_MODE_OUTPUT_PP,
-    .Pull = GPIO_NOPULL,
-    .Speed = GPIO_SPEED_FREQ_LOW,
-  };
-  HAL_GPIO_Init(GPIOA, &gpio_init);
-  HAL_GPIO_WritePin(GPIOA, PIN_PWR_LATCH, 1);
 
   // Clocks
   setup_clocks();
@@ -541,6 +554,11 @@ print(', '.join('%d' % round(8000*(1+sin(i/N*2*pi))) for i in range(N)))
   HAL_SPI_Init(&spi1);
   __HAL_SPI_ENABLE(&spi1);
 
+  epd_reset(false);
+  epd_waitbusy();
+  // Deep sleep
+  epd_cmd(0x10, 0x01);
+
   while (1) {
     TIM14->CCR1 = TIM16->CCR1 = TIM17->CCR1 = 0;
     HAL_SuspendTick();
@@ -629,6 +647,8 @@ if (1) {
 }
     // sleep_delay(1500);
     TIM14->CCR1 = TIM16->CCR1 = TIM17->CCR1 = 0;
+
+    HAL_GPIO_WritePin(GPIOA, PIN_PWR_LATCH, 0);
   }
 
   for (int i = 0; i < 10; i++) {
