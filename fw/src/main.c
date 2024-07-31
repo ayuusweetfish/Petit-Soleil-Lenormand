@@ -564,8 +564,8 @@ print(', '.join('%d' % round(8000*(1+sin(i/N*2*pi))) for i in range(N)))
     HAL_SuspendTick();
     // HAL_PWR_EnterSTOPMode(PWR_LOWPOWERREGULATOR_ON, PWR_STOPENTRY_WFI);
     HAL_ResumeTick();
-    while (HAL_GPIO_ReadPin(GPIOA, PIN_BUTTON) == 1)
-      sleep_delay(10);
+    // while (HAL_GPIO_ReadPin(GPIOA, PIN_BUTTON) == 1)
+    //   sleep_delay(10);
 
     for (int i = 0; i < N * 3; i++) {
     #if REV == 5
@@ -649,6 +649,7 @@ if (1) {
     TIM14->CCR1 = TIM16->CCR1 = TIM17->CCR1 = 0;
 
     HAL_GPIO_WritePin(GPIOA, PIN_PWR_LATCH, 0);
+    sleep_delay(1000);
   }
 
   for (int i = 0; i < 10; i++) {
