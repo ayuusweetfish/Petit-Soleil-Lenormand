@@ -162,8 +162,27 @@ static void epd_reset(bool partial)
   epd_cmd(0x18, 0x80);  // Internal sensor
   // Display Update Control 2; Master Activation
   // 0xB1: Load LUT with DISPLAY Mode 1
+  // 0xB9: Load LUT with DISPLAY Mode 2
   epd_cmd(0x22, partial ? 0xB9 : 0xB1);
+  // Master Activation
   epd_cmd(0x20);
+  epd_waitbusy();
+
+  // Gate Driving voltage control
+  // VGH = 10V
+  epd_cmd(0x03, 0x03);
+  // Source Driving voltage Control
+  if (!partial) {
+    // VSH1 = 6V, VSH2 = 2.4V, VSL = -9V
+    epd_cmd(0x04, 0xB2, 0x8E, 0x1A);
+  } else {
+    // VSH1 = 9V, VSH2 = 3V, VSL = -12V
+    epd_cmd(0x04, 0x23, 0x94, 0x26);
+  }
+  // Booster Soft start Control
+  // All weakest strength and maximum duration
+  // Min Off Time unchanged from POR value
+  epd_cmd(0x0C, 0x8B, 0x8C, 0x86, 0x3F);
 }
 
 void sleep_delay(uint32_t ticks)
@@ -555,7 +574,6 @@ print(', '.join('%d' % round(8000*(1+sin(i/N*2*pi))) for i in range(N)))
   __HAL_SPI_ENABLE(&spi1);
 
   epd_reset(false);
-  epd_waitbusy();
   // Deep sleep
   epd_cmd(0x10, 0x01);
 
@@ -567,6 +585,7 @@ print(', '.join('%d' % round(8000*(1+sin(i/N*2*pi))) for i in range(N)))
     // while (HAL_GPIO_ReadPin(GPIOA, PIN_BUTTON) == 1)
     //   sleep_delay(10);
 
+  if (0) {
     for (int i = 0; i < N * 3; i++) {
     #if REV == 5
       const int SCALE = 2;
@@ -579,6 +598,7 @@ print(', '.join('%d' % round(8000*(1+sin(i/N*2*pi))) for i in range(N)))
       for (int i = 0; i < 100; i++) asm volatile ("nop");
     }
     sleep_delay(500);
+  }
 
 if (1) {
   // ======== Drive display ========
@@ -605,7 +625,6 @@ if (1) {
   // Results in unstable display?
   // epd_cmd(0x10, 0x03);
 
-/*
   for (int i = 0; i < 5; i++) {
     TIM16->CCR1 = 2000;
     HAL_Delay(100);
@@ -643,13 +662,13 @@ if (1) {
   epd_waitbusy();
   // Deep sleep
   epd_cmd(0x10, 0x03);
-*/
 }
     // sleep_delay(1500);
     TIM14->CCR1 = TIM16->CCR1 = TIM17->CCR1 = 0;
 
     HAL_GPIO_WritePin(GPIOA, PIN_PWR_LATCH, 0);
     sleep_delay(1000);
+    while (1) { }
   }
 
   for (int i = 0; i < 10; i++) {
