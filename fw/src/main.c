@@ -139,7 +139,7 @@ static void decode(uint8_t *buf, const uint8_t *image, size_t size)
   }
 }
 
-static void epd_reset(bool partial)
+static void epd_reset(bool partial, bool power_save)
 {
   // (1) HW & SW Reset
   HAL_GPIO_WritePin(GPIOA, PIN_EP_NRST, GPIO_PIN_RESET);
@@ -168,13 +168,18 @@ static void epd_reset(bool partial)
   epd_cmd(0x20);
   epd_waitbusy();
 
-  // Gate Driving voltage control
-  // VGH = 10V
-  epd_cmd(0x03, 0x03);
-  // Source Driving voltage Control
-  if (!partial) {
-    // VSH1 = 6V, VSH2 = 2.4V, VSL = -9V
-    epd_cmd(0x04, 0xB2, 0x8E, 0x1A);
+  if (power_save) {
+    // Gate Driving voltage control
+    // VGH = 10V
+    epd_cmd(0x03, 0x03);
+    // Source Driving voltage Control
+    if (!partial) {
+      // VSH1 = 6V, VSH2 = 2.4V, VSL = -9V
+      epd_cmd(0x04, 0xB2, 0x8E, 0x1A);
+    } else {
+      // VSH1 = 9V, VSH2 = 3V, VSL = -12V
+      epd_cmd(0x04, 0x23, 0x94, 0x26);
+    }
   } else {
     // VSH1 = 9V, VSH2 = 3V, VSL = -12V
     epd_cmd(0x04, 0x23, 0x94, 0x26);
@@ -573,7 +578,6 @@ print(', '.join('%d' % round(8000*(1+sin(i/N*2*pi))) for i in range(N)))
   HAL_SPI_Init(&spi1);
   __HAL_SPI_ENABLE(&spi1);
 
-  epd_reset(false);
   // Deep sleep
   epd_cmd(0x10, 0x01);
 
@@ -605,7 +609,7 @@ if (1) {
   __attribute__ ((section (".noinit")))
   static uint8_t pixels[200 * 200 / 8];
 
-  epd_reset(false);
+  epd_reset(false, true);
   // Set RAM X-address Start / End position
   epd_cmd(0x44, 0x00, 0x18);  // 0x18 = 200 / 8 - 1
   epd_cmd(0x45, 0xC7, 0x00, 0x00, 0x00);  // 0xC7 = 200 - 1
@@ -632,7 +636,7 @@ if (1) {
     HAL_Delay(100);
   }
 
-  epd_reset(true);
+  epd_reset(true, true);
 #if 0   // Not correct, only displays top part, RAM not retained?
   // Set RAM X-address Start / End position
   epd_cmd(0x44, 0x00, 0x18);  // 0x18 = 200 / 8 - 1
