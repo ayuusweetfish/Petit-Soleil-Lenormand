@@ -609,7 +609,7 @@ if (1) {
   __attribute__ ((section (".noinit")))
   static uint8_t pixels[200 * 200 / 8];
 
-  epd_reset(false, true);
+  epd_reset(false, false);
   // Set RAM X-address Start / End position
   epd_cmd(0x44, 0x00, 0x18);  // 0x18 = 200 / 8 - 1
   epd_cmd(0x45, 0xC7, 0x00, 0x00, 0x00);  // 0xC7 = 200 - 1
@@ -636,7 +636,7 @@ if (1) {
     HAL_Delay(100);
   }
 
-  epd_reset(true, true);
+  epd_reset(true, false);
 #if 0   // Not correct, only displays top part, RAM not retained?
   // Set RAM X-address Start / End position
   epd_cmd(0x44, 0x00, 0x18);  // 0x18 = 200 / 8 - 1
