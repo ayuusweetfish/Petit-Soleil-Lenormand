@@ -629,11 +629,18 @@ if (1) {
   // Results in unstable display?
   // epd_cmd(0x10, 0x03);
 
+  // Blink green
   for (int i = 0; i < 5; i++) {
-    TIM16->CCR1 = 2000;
-    HAL_Delay(100);
-    TIM16->CCR1 = 0;
-    HAL_Delay(100);
+    TIM17->CCR1 = 2000; HAL_Delay(100);
+    TIM17->CCR1 = 0; HAL_Delay(100);
+  }
+
+  while (HAL_GPIO_ReadPin(GPIOA, PIN_BUTTON) == 1) sleep_delay(10);
+
+  // Blink blue
+  for (int i = 0; i < 3; i++) {
+    TIM14->CCR1 = 2000; HAL_Delay(100);
+    TIM14->CCR1 = 0; HAL_Delay(100);
   }
 
   epd_reset(true, false);
