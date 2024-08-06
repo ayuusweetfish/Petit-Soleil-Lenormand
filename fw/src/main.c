@@ -265,9 +265,10 @@ int main()
   HAL_GPIO_Init(GPIOB, &gpio_init);
   HAL_GPIO_WritePin(GPIOB, PIN_LED_R | PIN_LED_G | PIN_LED_B, GPIO_PIN_RESET);
 
+  HAL_GPIO_WritePin(GPIOB, PIN_LED_R | PIN_LED_G | PIN_LED_B, GPIO_PIN_SET);
+/*
   HAL_GPIO_WritePin(GPIOB, PIN_LED_R | PIN_LED_G | PIN_LED_B, GPIO_PIN_SET); HAL_Delay(500);
   HAL_GPIO_WritePin(GPIOB, PIN_LED_R | PIN_LED_G | PIN_LED_B, GPIO_PIN_RESET); HAL_Delay(500);
-/*
   while (1) {
     HAL_GPIO_WritePin(GPIOB, PIN_LED_R | PIN_LED_G | PIN_LED_B, GPIO_PIN_SET); HAL_Delay(500);
     HAL_GPIO_WritePin(GPIOB, PIN_LED_R | PIN_LED_G | PIN_LED_B, GPIO_PIN_RESET); HAL_Delay(500);
@@ -288,7 +289,7 @@ int main()
   HAL_GPIO_Init(GPIOA, &gpio_init);
 
   EXTI_HandleTypeDef exti_handle = {
-    // .Line = 3,
+    // .Line = 2,
     .RisingCallback = NULL,
     .FallingCallback = NULL,
   };
@@ -584,15 +585,9 @@ print(', '.join('%d' % round(8000*(1+sin(i/N*2*pi))) for i in range(N)))
   // Deep sleep
   epd_cmd(0x10, 0x01);
 
-  while (1) {
-    TIM14->CCR1 = TIM16->CCR1 = TIM17->CCR1 = 0;
-    HAL_SuspendTick();
-    // HAL_PWR_EnterSTOPMode(PWR_LOWPOWERREGULATOR_ON, PWR_STOPENTRY_WFI);
-    HAL_ResumeTick();
-    // while (HAL_GPIO_ReadPin(GPIOA, PIN_BUTTON) == 1)
-    //   sleep_delay(10);
+  TIM14->CCR1 = TIM16->CCR1 = TIM17->CCR1 = 0;
 
-  if (0) {
+  if (1) {
     for (int i = 0; i < N * 3; i++) {
     #if REV == 5
       const int SCALE = 2;
@@ -605,9 +600,9 @@ print(', '.join('%d' % round(8000*(1+sin(i/N*2*pi))) for i in range(N)))
       for (int i = 0; i < 100; i++) asm volatile ("nop");
     }
     sleep_delay(500);
+    TIM14->CCR1 = TIM16->CCR1 = TIM17->CCR1 = 0;
   }
 
-if (1) {
   // ======== Drive display ========
   __attribute__ ((section (".noinit")))
   static uint8_t pixels[200 * 200 / 8];
@@ -638,27 +633,20 @@ if (1) {
     TIM17->CCR1 = 0; HAL_Delay(100);
   }
 
-  while (HAL_GPIO_ReadPin(GPIOA, PIN_BUTTON) == 1) sleep_delay(10);
+  // while (HAL_GPIO_ReadPin(GPIOA, PIN_BUTTON) == 1) sleep_delay(10);
+  HAL_SuspendTick();
+  HAL_PWR_EnterSTOPMode(PWR_LOWPOWERREGULATOR_ON, PWR_STOPENTRY_WFI);
+  HAL_ResumeTick();
 
+/*
   // Blink blue
   for (int i = 0; i < 3; i++) {
     TIM14->CCR1 = 2000; HAL_Delay(100);
     TIM14->CCR1 = 0; HAL_Delay(100);
   }
+*/
 
   epd_reset(true, false);
-#if 0   // Not correct, only displays top part, RAM not retained?
-  // Set RAM X-address Start / End position
-  epd_cmd(0x44, 0x00, 0x18);  // 0x18 = 200 / 8 - 1
-  epd_cmd(0x45, 0x27, 0x00, 0x00, 0x00);  // 0x27 = 40 - 1
-  // Set starting RAM location
-  epd_cmd(0x4E, 0x00);
-  epd_cmd(0x4F, 0x27, 0x00);
-  // Write pixel data
-  decode(pixels, image, sizeof image);
-  decode(pixels + 200 / 8 * 160, image_overlay, sizeof image_overlay);
-  _epd_cmd(0x24, pixels + 200 / 8 * 160, (sizeof pixels) - 200 / 8 * 160);
-#else
   // Set RAM X-address Start / End position
   epd_cmd(0x44, 0x00, 0x18);  // 0x18 = 200 / 8 - 1
   epd_cmd(0x45, 0xC7, 0x00, 0x00, 0x00);  // 0xC7 = 200 - 1
@@ -669,33 +657,19 @@ if (1) {
   decode(pixels, image, sizeof image);
   decode(pixels + 200 / 8 * 160, image_overlay, sizeof image_overlay);
   _epd_cmd(0x24, pixels, sizeof pixels);
-#endif
+
   // Display
   epd_cmd(0x22, 0xCF);  // DISPLAY with DISPLAY Mode 2
   epd_cmd(0x20);
   epd_waitbusy();
   // Deep sleep
   epd_cmd(0x10, 0x03);
-}
-    // sleep_delay(1500);
-    TIM14->CCR1 = TIM16->CCR1 = TIM17->CCR1 = 0;
 
-    HAL_GPIO_WritePin(GPIOA, PIN_PWR_LATCH, 0);
-    sleep_delay(1000);
-    while (1) { }
-  }
+  // sleep_delay(1500);
+  TIM14->CCR1 = TIM16->CCR1 = TIM17->CCR1 = 0;
 
-  for (int i = 0; i < 10; i++) {
-    swv_printf("blink!\n");
-/*
-    HAL_GPIO_WritePin(GPIOB, PIN_LED_R, GPIO_PIN_SET);
-    HAL_Delay(200);
-    HAL_GPIO_WritePin(GPIOB, PIN_LED_R, GPIO_PIN_RESET);
-    HAL_Delay(200);
-*/
-  }
-  HAL_GPIO_WritePin(GPIOB, PIN_LED_R, GPIO_PIN_SET);
-  HAL_Delay(1000);
+  HAL_GPIO_WritePin(GPIOA, PIN_PWR_LATCH, 0);
+  while (1) { }
 }
 
 void SysTick_Handler()
@@ -707,10 +681,9 @@ void SysTick_Handler()
 void EXTI2_3_IRQHandler()
 {
   setup_clocks();
-  HAL_GPIO_WritePin(GPIOB, PIN_LED_G | PIN_LED_B, 0);
   if (0) for (int i = 0; i < 5; i++) {
-    HAL_GPIO_WritePin(GPIOB, PIN_LED_R, 1); for (volatile int i = 0; i < 20000; i++) asm volatile ("nop");
-    HAL_GPIO_WritePin(GPIOB, PIN_LED_R, 0); for (volatile int i = 0; i < 20000; i++) asm volatile ("nop");
+    TIM16->CCR1 = 8000; for (volatile int i = 0; i < 20000; i++) asm volatile ("nop");
+    TIM16->CCR1 =    0; for (volatile int i = 0; i < 20000; i++) asm volatile ("nop");
   }
   __HAL_GPIO_EXTI_CLEAR_FALLING_IT(PIN_BUTTON);
 }
