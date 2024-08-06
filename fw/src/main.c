@@ -4,9 +4,6 @@
 #include <stdint.h>
 #include <stdio.h>
 
-#define REV 5
-
-#if REV == 5
 #define PIN_LED_R     GPIO_PIN_6
 #define PIN_LED_G     GPIO_PIN_7
 #define PIN_LED_B     GPIO_PIN_1
@@ -17,17 +14,6 @@
 #define PIN_BUTTON    GPIO_PIN_2
 #define EXTI_LINE_BUTTON  EXTI_LINE_2
 #define PIN_PWR_LATCH GPIO_PIN_3
-#elif REV == 4
-#define PIN_LED_R     GPIO_PIN_6
-#define PIN_LED_G     GPIO_PIN_7
-#define PIN_LED_B     GPIO_PIN_1
-#define PIN_EP_NCS    GPIO_PIN_4
-#define PIN_EP_DCC    GPIO_PIN_6
-#define PIN_EP_NRST   GPIO_PIN_11
-#define PIN_EP_BUSY   GPIO_PIN_12
-#define PIN_BUTTON    GPIO_PIN_3
-#define EXTI_LINE_BUTTON  EXTI_LINE_3
-#endif
 
 static uint8_t swv_buf[256];
 static size_t swv_buf_ptr = 0;
@@ -231,14 +217,6 @@ int main()
   __HAL_RCC_GPIOB_CLK_ENABLE();
   GPIO_InitTypeDef gpio_init;
 
-/*
-  gpio_init.Pin = GPIO_PIN_All;
-  gpio_init.Mode = GPIO_MODE_INPUT;
-  gpio_init.Pull = GPIO_NOPULL;
-  gpio_init.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(GPIOA, &gpio_init);
-*/
-
   // SWD (PA13, PA14)
   gpio_init.Pin = GPIO_PIN_13 | GPIO_PIN_14;
   gpio_init.Mode = GPIO_MODE_AF_PP; // Pass over control to AF peripheral
@@ -262,19 +240,8 @@ int main()
   gpio_init.Mode = GPIO_MODE_OUTPUT_PP;
   gpio_init.Pull = GPIO_PULLDOWN;
   HAL_GPIO_Init(GPIOB, &gpio_init);
-  HAL_GPIO_WritePin(GPIOB, PIN_LED_R | PIN_LED_G | PIN_LED_B, GPIO_PIN_RESET);
-
+  // HAL_GPIO_WritePin(GPIOB, PIN_LED_R | PIN_LED_G | PIN_LED_B, GPIO_PIN_RESET);
   HAL_GPIO_WritePin(GPIOB, PIN_LED_R | PIN_LED_G | PIN_LED_B, GPIO_PIN_SET);
-/*
-  HAL_GPIO_WritePin(GPIOB, PIN_LED_R | PIN_LED_G | PIN_LED_B, GPIO_PIN_SET); HAL_Delay(500);
-  HAL_GPIO_WritePin(GPIOB, PIN_LED_R | PIN_LED_G | PIN_LED_B, GPIO_PIN_RESET); HAL_Delay(500);
-  while (1) {
-    HAL_GPIO_WritePin(GPIOB, PIN_LED_R | PIN_LED_G | PIN_LED_B, GPIO_PIN_SET); HAL_Delay(500);
-    HAL_GPIO_WritePin(GPIOB, PIN_LED_R | PIN_LED_G | PIN_LED_B, GPIO_PIN_RESET); HAL_Delay(500);
-  }
-  while (1)
-    HAL_PWR_EnterSLEEPMode(PWR_MAINREGULATOR_ON, PWR_SLEEPENTRY_WFI);
-*/
 
   // Clocks
   setup_clocks();
@@ -434,7 +401,6 @@ int main()
   swv_printf("ADC VREFINT = %lu\n", adc_value);
   // VREFINT cal = 1667, VREFINT read = 1550 -> VDD = 1667/1550 * 3 V = 3.226 V
 
-#if REV == 5
   adc_ch13.Channel = ADC_CHANNEL_0;
   adc_ch13.Rank = ADC_REGULAR_RANK_1;
   adc_ch13.SamplingTime = ADC_SAMPLETIME_79CYCLES_5; // Stablize
@@ -443,14 +409,13 @@ int main()
   HAL_ADC_PollForConversion(&adc1, 1000);
   adc_value = HAL_ADC_GetValue(&adc1);
   HAL_ADC_Stop(&adc1);
-  swv_printf("ADC VCAP = %lu\n", adc_value);
-  // VREFINT cal = 1656, VREFINT read = 1543, VCAP read = 3813
-  // -> VCAP = 3813/4095 * (1656/1542 * 3 V) = 3.00 V
-#endif
+  swv_printf("ADC VRI = %lu\n", adc_value);
+  // VREFINT cal = 1656, VREFINT read = 1543, VRI read = 3813
+  // -> VRI = 3813/4095 * (1656/1542 * 3 V) = 3.00 V
 
   // ======== LED Timers ========
-  // APB1 = 64 MHz
-  // period = 4 kHz = 16000 cycles
+  // APB1 = 16 MHz
+  // period = 1 kHz = 16000 cycles
 
   // LED Blue, TIM14
   gpio_init.Pin = GPIO_PIN_1;
@@ -588,11 +553,7 @@ print(', '.join('%d' % round(8000*(1+sin(i/N*2*pi))) for i in range(N)))
 
   if (1) {
     for (int i = 0; i < N * 3; i++) {
-    #if REV == 5
       const int SCALE = 2;
-    #elif REV == 4
-      const int SCALE = 40;
-    #endif
       TIM14->CCR1 = sin_lut[i % N] / SCALE;
       TIM16->CCR1 = sin_lut[(i + N / 3) % N] / SCALE;
       TIM17->CCR1 = sin_lut[(i + N * 2 / 3) % N] / SCALE;
@@ -664,7 +625,6 @@ print(', '.join('%d' % round(8000*(1+sin(i/N*2*pi))) for i in range(N)))
   // Deep sleep
   epd_cmd(0x10, 0x03);
 
-  // sleep_delay(1500);
   TIM14->CCR1 = TIM16->CCR1 = TIM17->CCR1 = 0;
 
   HAL_GPIO_WritePin(GPIOA, PIN_PWR_LATCH, 0);
