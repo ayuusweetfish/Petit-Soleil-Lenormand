@@ -225,7 +225,6 @@ void setup_clocks()
 int main()
 {
   HAL_Init();
-  // HAL_PWR_EnterSTOPMode(PWR_LOWPOWERREGULATOR_ON, PWR_STOPENTRY_WFI);
 
   // ======== GPIO ========
   __HAL_RCC_GPIOA_CLK_ENABLE();
@@ -445,8 +444,8 @@ int main()
   adc_value = HAL_ADC_GetValue(&adc1);
   HAL_ADC_Stop(&adc1);
   swv_printf("ADC VCAP = %lu\n", adc_value);
-  // VREFINT cal = 1659, VREFINT read = 1545, VCAP read = 2644
-  // -> VCAP = 2644/1545 * (1659/1545 * 3 V) = 1.838 V
+  // VREFINT cal = 1656, VREFINT read = 1543, VCAP read = 3813
+  // -> VCAP = 3813/4095 * (1656/1542 * 3 V) = 3.00 V
 #endif
 
   // ======== LED Timers ========
@@ -669,6 +668,8 @@ print(', '.join('%d' % round(8000*(1+sin(i/N*2*pi))) for i in range(N)))
   TIM14->CCR1 = TIM16->CCR1 = TIM17->CCR1 = 0;
 
   HAL_GPIO_WritePin(GPIOA, PIN_PWR_LATCH, 0);
+  HAL_SuspendTick();
+  HAL_PWR_EnterSTOPMode(PWR_LOWPOWERREGULATOR_ON, PWR_STOPENTRY_WFI);
   while (1) { }
 }
 

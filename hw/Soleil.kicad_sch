@@ -4435,7 +4435,7 @@
     (property "Reference" "R9" (at 227.33 82.55 0)
       (effects (font (size 1.27 1.27)) (justify left))
     )
-    (property "Value" "1M" (at 227.33 85.09 0)
+    (property "Value" "0" (at 227.33 85.09 0)
       (effects (font (size 1.27 1.27)) (justify left))
     )
     (property "Footprint" "Resistor_SMD:R_0402_1005Metric" (at 223.012 83.82 90)
@@ -5688,7 +5688,7 @@
   )
 
   (symbol (lib_id "Device:Q_NMOS_GSD") (at 222.25 95.885 0) (unit 1)
-    (in_bom yes) (on_board yes) (dnp no)
+    (in_bom yes) (on_board yes) (dnp yes)
     (uuid fa1e7c8a-045f-4faf-9c26-67e6f5001bbe)
     (property "Reference" "Q2" (at 227.965 94.615 0)
       (effects (font (size 1.27 1.27)) (justify left))
