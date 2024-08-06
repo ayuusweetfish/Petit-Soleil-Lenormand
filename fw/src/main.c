@@ -92,7 +92,7 @@ static inline bool epd_waitbusy()
       // Fail!
       TIM14->CCR1 = TIM16->CCR1 = TIM17->CCR1 = 0;
       for (int i = 0; i < 3; i++) {
-        TIM16->CCR1 = 6000; HAL_Delay(100);
+        TIM16->CCR1 = 2000; HAL_Delay(100);
         TIM16->CCR1 =    0; HAL_Delay(100);
       }
       HAL_GPIO_WritePin(GPIOA, PIN_PWR_LATCH, 0);
@@ -183,7 +183,7 @@ void sleep_delay(uint32_t ticks)
 {
   uint32_t t0 = HAL_GetTick();
   while (HAL_GetTick() - t0 < ticks) {
-    // HAL_PWR_EnterSLEEPMode(PWR_MAINREGULATOR_ON, PWR_SLEEPENTRY_WFI);
+    HAL_PWR_EnterSLEEPMode(PWR_MAINREGULATOR_ON, PWR_SLEEPENTRY_WFI);
   }
 }
 
@@ -415,7 +415,7 @@ int main()
 
   // ======== LED Timers ========
   // APB1 = 16 MHz
-  // period = 1 kHz = 16000 cycles
+  // period = 4 kHz = 4000 cycles
 
   // LED Blue, TIM14
   gpio_init.Pin = GPIO_PIN_1;
@@ -430,7 +430,7 @@ int main()
     .Init = {
       .Prescaler = 1 - 1,
       .CounterMode = TIM_COUNTERMODE_UP,
-      .Period = 16000 - 1,
+      .Period = 4000 - 1,
       .ClockDivision = TIM_CLOCKDIVISION_DIV1,
       .RepetitionCounter = 0,
     },
@@ -457,7 +457,7 @@ int main()
     .Init = {
       .Prescaler = 1 - 1,
       .CounterMode = TIM_COUNTERMODE_UP,
-      .Period = 16000 - 1,
+      .Period = 4000 - 1,
       .ClockDivision = TIM_CLOCKDIVISION_DIV1,
       .RepetitionCounter = 0,
     },
@@ -484,7 +484,7 @@ int main()
     .Init = {
       .Prescaler = 1 - 1,
       .CounterMode = TIM_COUNTERMODE_UP,
-      .Period = 16000 - 1,
+      .Period = 4000 - 1,
       .ClockDivision = TIM_CLOCKDIVISION_DIV1,
       .RepetitionCounter = 0,
     },
@@ -553,7 +553,7 @@ print(', '.join('%d' % round(8000*(1+sin(i/N*2*pi))) for i in range(N)))
 
   if (1) {
     for (int i = 0; i < N * 3; i++) {
-      const int SCALE = 2;
+      const int SCALE = 8;
       TIM14->CCR1 = sin_lut[i % N] / SCALE;
       TIM16->CCR1 = sin_lut[(i + N / 3) % N] / SCALE;
       TIM17->CCR1 = sin_lut[(i + N * 2 / 3) % N] / SCALE;
@@ -589,7 +589,7 @@ print(', '.join('%d' % round(8000*(1+sin(i/N*2*pi))) for i in range(N)))
 
   // Blink green
   for (int i = 0; i < 5; i++) {
-    TIM17->CCR1 = 2000; HAL_Delay(100);
+    TIM17->CCR1 = 500; HAL_Delay(100);
     TIM17->CCR1 = 0; HAL_Delay(100);
   }
 
@@ -597,14 +597,6 @@ print(', '.join('%d' % round(8000*(1+sin(i/N*2*pi))) for i in range(N)))
   HAL_SuspendTick();
   HAL_PWR_EnterSTOPMode(PWR_LOWPOWERREGULATOR_ON, PWR_STOPENTRY_WFI);
   HAL_ResumeTick();
-
-/*
-  // Blink blue
-  for (int i = 0; i < 3; i++) {
-    TIM14->CCR1 = 2000; HAL_Delay(100);
-    TIM14->CCR1 = 0; HAL_Delay(100);
-  }
-*/
 
   epd_reset(true, false);
   // Set RAM X-address Start / End position
@@ -643,7 +635,7 @@ void EXTI2_3_IRQHandler()
 {
   setup_clocks();
   if (0) for (int i = 0; i < 5; i++) {
-    TIM16->CCR1 = 8000; for (volatile int i = 0; i < 20000; i++) asm volatile ("nop");
+    TIM16->CCR1 = 2000; for (volatile int i = 0; i < 20000; i++) asm volatile ("nop");
     TIM16->CCR1 =    0; for (volatile int i = 0; i < 20000; i++) asm volatile ("nop");
   }
   __HAL_GPIO_EXTI_CLEAR_FALLING_IT(PIN_BUTTON);
