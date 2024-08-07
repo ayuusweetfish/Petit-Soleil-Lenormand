@@ -1,5 +1,6 @@
 # (cd ~/Downloads/stlink; ./build/Release/bin/st-info --probe --connect-under-reset)
-# PWD1=`pwd`; (cd ~/Downloads/stlink; ./build/Release/bin/st-flash --connect-under-reset write $PWD1/.pio/build/dev/firmware.bin 0x8000000)
+# (cd ~/Downloads/stlink; ./build/Release/bin/st-flash --connect-under-reset write $OLDPWD/.pio/build/dev/firmware.bin 0x8000000)
+# ~/.platformio/packages/tool-openocd/bin/openocd -f interface/stlink.cfg -f target/stm32g0x.cfg -c 'program {.pio/build/dev/firmware.elf} verify reset; shutdown'
 
 # ~/.platformio/packages/tool-openocd/bin/openocd -f interface/stlink.cfg -f target/stm32g0x.cfg -c 'adapter speed 32000'
 

@@ -233,8 +233,19 @@ static inline void print_char(uint8_t *buf, uint8_t ch, int r, int c)
 }
 static inline void print_string(uint8_t *restrict buf, const char *restrict s, int r, int c)
 {
-  for (; *s != '\0'; s++, c++)
-    print_char(buf, *s, r, c);
+  int c0 = c;
+  for (; *s != '\0'; s++) {
+    if (*s == '\n') {
+      r += 14;
+      c = c0;
+    } else {
+      print_char(buf, *s, r, c);
+      if (++c == 200 / 8) {
+        r += 14;
+        c = 0;
+      }
+    }
+  }
 }
 
 static void epd_reset(bool partial, bool power_save)
@@ -294,6 +305,52 @@ void sleep_delay(uint32_t ticks)
   while (HAL_GetTick() - t0 < ticks) {
     HAL_PWR_EnterSLEEPMode(PWR_MAINREGULATOR_ON, PWR_SLEEPENTRY_WFI);
   }
+}
+
+static inline void entropy_clocks(uint32_t seed1, uint32_t seed2, uint32_t s[50])
+{
+  // LSI-HSI ratio
+  __HAL_RCC_TIM16_CLK_ENABLE();
+  tim16 = (TIM_HandleTypeDef){
+    .Instance = TIM16,
+    .Init = {
+      .Prescaler = 3 - 1,
+      .CounterMode = TIM_COUNTERMODE_UP,
+      .Period = 65536 - 1,
+      .ClockDivision = TIM_CLOCKDIVISION_DIV1,
+      .RepetitionCounter = 0,
+    },
+  };
+  HAL_TIM_Base_Init(&tim16);
+  TIM_ClockConfigTypeDef tim16_cfg_ti1 = {
+    .ClockSource = TIM_CLOCKSOURCE_TI1,
+    .ClockPolarity = TIM_CLOCKPOLARITY_RISING,
+    .ClockPrescaler = TIM_CLOCKPRESCALER_DIV1,
+    .ClockFilter = 0,
+  };
+  HAL_TIM_ConfigClockSource(&tim16, &tim16_cfg_ti1);
+  HAL_TIMEx_TISelection(&tim16, TIM_TIM16_TI1_LSI, TIM_CHANNEL_1);
+  HAL_TIM_Base_Start(&tim16);
+
+  for (int i = 0; i < 50; i++) {
+    uint32_t last0 = (i == 0 ? 0 : s[i - 1]);
+    uint32_t last1 = (i == 0 ? 0 : i == 1 ? s[i - 1] : s[i - 2]);
+    int ops = 1000 + (((last0 >> 8) ^ last1 ^ (last0 << 4)) & 0x1ff);
+    ops += (i < 24 ? (seed1 >> i) : (seed2 >> (i - 24))) & 0xff;
+    for (int j = 0; j < ops; j++) asm volatile ("nop");
+    s[i] = TIM16->CNT;
+  }
+
+  // Stop timer and restore settings
+  HAL_TIM_Base_Stop(&tim16);
+  HAL_TIM_Base_DeInit(&tim16);
+  TIM_ClockConfigTypeDef tim16_cfg_int = {
+    .ClockSource = TIM_CLOCKSOURCE_INTERNAL,
+    .ClockPolarity = TIM_CLOCKPOLARITY_RISING,
+    .ClockPrescaler = TIM_CLOCKPRESCALER_DIV1,
+    .ClockFilter = 0,
+  };
+  HAL_TIM_ConfigClockSource(&tim16, &tim16_cfg_int);
 }
 
 void setup_clocks()
@@ -378,7 +435,7 @@ int main()
 
   // Interrupt
   HAL_NVIC_SetPriority(EXTI2_3_IRQn, 1, 0);
-  HAL_NVIC_EnableIRQ(EXTI2_3_IRQn);
+  // Will be enabled later
 
   // ======== ADC ========
   gpio_init.Pin = GPIO_PIN_0;
@@ -435,13 +492,6 @@ int main()
     *(uint32_t *)(UID_BASE + 4),
     *(uint32_t *)(UID_BASE + 8));
   swv_printf("HSICAL = %u\n", LL_RCC_HSI_GetCalibration());
-/*
-  swv_printf("pixels: %08x %08x %08x %08x\n",
-    *(uint32_t *)(pixels +  0),
-    *(uint32_t *)(pixels +  4),
-    *(uint32_t *)(pixels +  8),
-    *(uint32_t *)(pixels + 12));
-*/
   uint64_t mem1 = 0, mem2 = 0;
   for (uint64_t *p = (uint64_t *)0x20000000; p < (uint64_t *)0x20002000; p++) {
     mem1 = mem1 ^ *p;
@@ -452,48 +502,8 @@ int main()
     (uint32_t)(mem2 >> 32), (uint32_t)mem2
   );
 
-  // LSI-HSI ratio
-  __HAL_RCC_TIM16_CLK_ENABLE();
-  tim16 = (TIM_HandleTypeDef){
-    .Instance = TIM16,
-    .Init = {
-      .Prescaler = 3 - 1,
-      .CounterMode = TIM_COUNTERMODE_UP,
-      .Period = 65536 - 1,
-      .ClockDivision = TIM_CLOCKDIVISION_DIV1,
-      .RepetitionCounter = 0,
-    },
-  };
-  HAL_TIM_Base_Init(&tim16);
-  TIM_ClockConfigTypeDef tim16_cfg_ti1 = {
-    .ClockSource = TIM_CLOCKSOURCE_TI1,
-    .ClockPolarity = TIM_CLOCKPOLARITY_RISING,
-    .ClockPrescaler = TIM_CLOCKPRESCALER_DIV1,
-    .ClockFilter = 0,
-  };
-  HAL_TIM_ConfigClockSource(&tim16, &tim16_cfg_ti1);
-  HAL_TIMEx_TISelection(&tim16, TIM_TIM16_TI1_LSI, TIM_CHANNEL_1);
-  HAL_TIM_Base_Start(&tim16);
-
   uint32_t s[50];
-  for (int i = 0; i < 50; i++) {
-    uint32_t last = (i == 0 ? 0 : s[i - 1]);
-    int ops = 1000 + (((last >> 8) ^ last ^ (last << 4)) & 0x1ff);
-    for (int j = 0; j < ops; j++) asm volatile ("nop");
-    s[i] = TIM16->CNT;
-  }
-  for (int i = 40; i < 50; i++)
-    swv_printf("%5u|%5u%c", s[i], (s[i] - (i == 0 ? 0 : s[i - 1])) % 65536, i % 10 == 9 ? '\n' : ' ');
-  // Stop timer and restore settings
-  HAL_TIM_Base_Stop(&tim16);
-  HAL_TIM_Base_DeInit(&tim16);
-  TIM_ClockConfigTypeDef tim16_cfg_int = {
-    .ClockSource = TIM_CLOCKSOURCE_INTERNAL,
-    .ClockPolarity = TIM_CLOCKPOLARITY_RISING,
-    .ClockPrescaler = TIM_CLOCKPRESCALER_DIV1,
-    .ClockFilter = 0,
-  };
-  HAL_TIM_ConfigClockSource(&tim16, &tim16_cfg_int);
+  entropy_clocks(mem1, mem2, s);
 
   adc_ch13.Channel = ADC_CHANNEL_VREFINT;
   adc_ch13.Rank = ADC_REGULAR_RANK_1;
@@ -688,6 +698,7 @@ print(', '.join('%d' % round(8000*(1+sin(i/N*2*pi))) for i in range(N)))
   epd_cmd(0x4F, 0xC7, 0x00);
   // Write pixel data
   decode(pixels, image, sizeof image);
+
   // Print string
   char voltage_str[] = "0.000 V";
   voltage_str[0] = '0' + vri_mV / 1000;
@@ -695,6 +706,16 @@ print(', '.join('%d' % round(8000*(1+sin(i/N*2*pi))) for i in range(N)))
   voltage_str[3] = '0' + vri_mV / 10 % 10;
   voltage_str[4] = '0' + vri_mV % 10;
   print_string(pixels, voltage_str, 2, 18);
+  char s1[64];
+  snprintf(s1, 64, "%08lx %08lx\n%08lx %08lx",
+    (uint32_t)(mem1 >> 32), (uint32_t)mem1,
+    (uint32_t)(mem2 >> 32), (uint32_t)mem2
+  );
+  print_string(pixels, s1, 100, 0);
+  for (int i = 40; i < 50; i++)
+    snprintf(s1 + (i - 40) * 4, 5, "%04lx", (s[i] - s[i - 1]) % 65536);
+  print_string(pixels, s1, 132, 0);
+
   _epd_cmd(0x24, pixels, sizeof pixels);
   // Display
   epd_cmd(0x22, 0xC7);  // DISPLAY with DISPLAY Mode 1
@@ -707,15 +728,17 @@ print(', '.join('%d' % round(8000*(1+sin(i/N*2*pi))) for i in range(N)))
   // epd_cmd(0x10, 0x03);
 
   // Blink green
-  for (int i = 0; i < 5; i++) {
-    TIM17->CCR1 = 500; HAL_Delay(100);
-    TIM17->CCR1 = 0; HAL_Delay(100);
+  for (int i = 0; i < 1; i++) {
+    TIM17->CCR1 = 500; sleep_delay(100);
+    TIM17->CCR1 = 0; sleep_delay(100);
   }
 
   // while (HAL_GPIO_ReadPin(GPIOA, PIN_BUTTON) == 1) sleep_delay(10);
   HAL_SuspendTick();
+  HAL_NVIC_EnableIRQ(EXTI2_3_IRQn);
   HAL_PWR_EnterSTOPMode(PWR_LOWPOWERREGULATOR_ON, PWR_STOPENTRY_WFI);
   HAL_ResumeTick();
+  HAL_NVIC_DisableIRQ(EXTI2_3_IRQn);
 
   epd_reset(true, false);
   // Set RAM X-address Start / End position
