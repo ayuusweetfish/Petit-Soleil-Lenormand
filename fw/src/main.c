@@ -707,7 +707,7 @@ print(', '.join('%d' % round(8000*(1+sin(i/N*2*pi))) for i in range(N)))
   __attribute__ ((section (".noinit")))
   static uint8_t pixels[200 * 200 / 8];
 
-  epd_reset(false, false);
+  epd_reset(false, vri_mV < 2000);
   // Set RAM X-address Start / End position
   epd_cmd(0x44, 0x00, 0x18);  // 0x18 = 200 / 8 - 1
   epd_cmd(0x45, 0xC7, 0x00, 0x00, 0x00);  // 0xC7 = 200 - 1
