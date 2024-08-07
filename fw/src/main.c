@@ -299,7 +299,7 @@ static void epd_reset(bool partial, bool power_save)
   epd_cmd(0x0C, 0x8B, 0x8C, 0x86, 0x3F);
 }
 
-void sleep_delay(uint32_t ticks)
+static inline void sleep_delay(uint32_t ticks)
 {
   uint32_t t0 = HAL_GetTick();
   while (HAL_GetTick() - t0 < ticks) {
@@ -307,6 +307,40 @@ void sleep_delay(uint32_t ticks)
   }
 }
 
+#pragma GCC optimize("O3")
+static inline void spin_delay(uint32_t cycles)
+{
+  for (uint32_t i = 0; i < cycles; i++) asm volatile ("nop");
+}
+
+static inline void entropy_adc(uint8_t out_v[100])
+{
+  ADC_ChannelConfTypeDef adc_ch13;
+  adc_ch13.Channel = ADC_CHANNEL_VREFINT;
+  adc_ch13.Rank = ADC_REGULAR_RANK_1;
+  adc_ch13.SamplingTime = ADC_SAMPLETIME_1CYCLE_5;
+
+  ADC_ChannelConfTypeDef adc_ch_temp;
+  adc_ch_temp.Channel = ADC_CHANNEL_TEMPSENSOR;
+  adc_ch_temp.Rank = ADC_REGULAR_RANK_1;
+  adc_ch_temp.SamplingTime = ADC_SAMPLETIME_1CYCLE_5;
+
+  for (int ch = 0; ch <= 1; ch++) {
+    if (ch == 0) HAL_ADC_ConfigChannel(&adc1, &adc_ch13);
+    else HAL_ADC_ConfigChannel(&adc1, &adc_ch_temp);
+    uint8_t v = 0;
+    for (int i = 0; i < 400; i++) {
+      HAL_ADC_Start(&adc1);
+      HAL_ADC_PollForConversion(&adc1, 1000);
+      uint32_t adc_value = HAL_ADC_GetValue(&adc1);
+      HAL_ADC_Stop(&adc1);
+      v = (v << 1) | (adc_value & 1);
+      if (i % 8 == 0) out_v[ch * 50 + i / 8] = v;
+    }
+  }
+}
+
+#pragma GCC optimize("O3")
 static inline void entropy_clocks(uint32_t seed1, uint32_t seed2, uint32_t s[50])
 {
   // LSI-HSI ratio
@@ -336,12 +370,12 @@ static inline void entropy_clocks(uint32_t seed1, uint32_t seed2, uint32_t s[50]
     uint32_t last0 = (i == 0 ? 0 : s[i - 1]);
     uint32_t last1 = (i == 0 ? 0 : i == 1 ? s[i - 1] : s[i - 2]);
     int ops = 1000 + (((last0 >> 8) ^ last1 ^ (last0 << 4)) & 0x1ff);
-    ops += (i < 24 ? (seed1 >> i) : (seed2 >> (i - 24))) & 0xff;
-    for (int j = 0; j < ops; j++) asm volatile ("nop");
+    ops += ((i < 25 ? (seed1 >> i) : (seed2 >> (i - 25))) & 0xff) * 4;
+    spin_delay(ops);
     s[i] = TIM16->CNT;
   }
 
-  // Stop timer and restore settings
+  // Stop timer and restore clock source to SYSCLK
   HAL_TIM_Base_Stop(&tim16);
   HAL_TIM_Base_DeInit(&tim16);
   TIM_ClockConfigTypeDef tim16_cfg_int = {
@@ -351,6 +385,7 @@ static inline void entropy_clocks(uint32_t seed1, uint32_t seed2, uint32_t s[50]
     .ClockFilter = 0,
   };
   HAL_TIM_ConfigClockSource(&tim16, &tim16_cfg_int);
+  __HAL_RCC_TIM16_CLK_DISABLE();
 }
 
 void setup_clocks()
@@ -376,6 +411,13 @@ void setup_clocks()
 
 int main()
 {
+  // Entropy from randomly initialised memory
+  uint64_t mem1 = 0, mem2 = 0;
+  for (uint64_t *p = (uint64_t *)0x20000000; p < (uint64_t *)0x20002000; p++) {
+    mem1 = mem1 ^ *p;
+    mem2 = (mem2 * 17) ^ ((uint64_t)(uint32_t)p + *p);
+  }
+
   HAL_Init();
 
   // ======== GPIO ========
@@ -460,31 +502,10 @@ int main()
   adc1.Init.TriggerFrequencyMode = ADC_TRIGGER_FREQ_LOW;
   HAL_ADC_Init(&adc1);
 
-  ADC_ChannelConfTypeDef adc_ch13;
-  adc_ch13.Channel = ADC_CHANNEL_VREFINT;
-  adc_ch13.Rank = ADC_REGULAR_RANK_1;
-  adc_ch13.SamplingTime = ADC_SAMPLETIME_1CYCLE_5;
+  uint8_t e_adc[100];
+  entropy_adc(e_adc);
 
-  ADC_ChannelConfTypeDef adc_ch_temp;
-  adc_ch_temp.Channel = ADC_CHANNEL_TEMPSENSOR;
-  adc_ch_temp.Rank = ADC_REGULAR_RANK_1;
-  adc_ch_temp.SamplingTime = ADC_SAMPLETIME_1CYCLE_5;
-
-  for (int ch = 0; ch <= 1; ch++) {
-    if (ch == 0) HAL_ADC_ConfigChannel(&adc1, &adc_ch13);
-    else HAL_ADC_ConfigChannel(&adc1, &adc_ch_temp);
-    swv_printf("%6s: ", ch == 0 ? "REFINT" : "TEMP");
-    uint8_t v = 0;
-    for (int i = 0; i < 400; i++) {
-      HAL_ADC_Start(&adc1);
-      HAL_ADC_PollForConversion(&adc1, 1000);
-      uint32_t adc_value = HAL_ADC_GetValue(&adc1);
-      HAL_ADC_Stop(&adc1);
-      v = (v << 1) | (adc_value & 1);
-      if (i % 8 == 0) swv_printf("%02x", v);
-    }
-    swv_printf("\n");
-  }
+/*
   swv_printf("30 C = %lu\n", *TEMPSENSOR_CAL1_ADDR);
   swv_printf("130 C = %lu\n", *TEMPSENSOR_CAL2_ADDR);
   swv_printf("UID = %08x %08x %08x\n",
@@ -492,19 +513,15 @@ int main()
     *(uint32_t *)(UID_BASE + 4),
     *(uint32_t *)(UID_BASE + 8));
   swv_printf("HSICAL = %u\n", LL_RCC_HSI_GetCalibration());
-  uint64_t mem1 = 0, mem2 = 0;
-  for (uint64_t *p = (uint64_t *)0x20000000; p < (uint64_t *)0x20002000; p++) {
-    mem1 = mem1 ^ *p;
-    mem2 = (mem2 * 17) ^ *p;
-  }
-  swv_printf("all mem: %08x %08x %08x %08x\n",
-    (uint32_t)(mem1 >> 32), (uint32_t)mem1,
-    (uint32_t)(mem2 >> 32), (uint32_t)mem2
-  );
+*/
 
   uint32_t s[50];
-  entropy_clocks(mem1, mem2, s);
+  entropy_clocks(
+    (uint32_t)mem1 ^ ((uint32_t)(mem2 >> 32)) ^ *(uint32_t *)(UID_BASE + 8) ^ *(uint32_t *)(e_adc + 44),
+    (uint32_t)mem2 ^ ((uint32_t)(mem1 >> 32)) ^ *(uint32_t *)(UID_BASE + 4) ^ *(uint32_t *)(e_adc + 96),
+    s);
 
+  ADC_ChannelConfTypeDef adc_ch13;
   adc_ch13.Channel = ADC_CHANNEL_VREFINT;
   adc_ch13.Rank = ADC_REGULAR_RANK_1;
   adc_ch13.SamplingTime = ADC_SAMPLETIME_79CYCLES_5; // Stablize
@@ -520,10 +537,11 @@ int main()
   swv_printf("ADC VREFINT = %lu\n", adc_vrefint);
   // VREFINT cal = 1667, VREFINT read = 1550 -> VDD = 1667/1550 * 3 V = 3.226 V
 
-  adc_ch13.Channel = ADC_CHANNEL_0;
-  adc_ch13.Rank = ADC_REGULAR_RANK_1;
-  adc_ch13.SamplingTime = ADC_SAMPLETIME_79CYCLES_5; // Stablize
-  HAL_ADC_ConfigChannel(&adc1, &adc_ch13);
+  ADC_ChannelConfTypeDef adc_ch0;
+  adc_ch0.Channel = ADC_CHANNEL_0;
+  adc_ch0.Rank = ADC_REGULAR_RANK_1;
+  adc_ch0.SamplingTime = ADC_SAMPLETIME_79CYCLES_5; // Stablize
+  HAL_ADC_ConfigChannel(&adc1, &adc_ch0);
   HAL_ADC_Start(&adc1);
   HAL_ADC_PollForConversion(&adc1, 1000);
   uint32_t adc_vri = HAL_ADC_GetValue(&adc1);
@@ -679,7 +697,7 @@ print(', '.join('%d' % round(8000*(1+sin(i/N*2*pi))) for i in range(N)))
       TIM14->CCR1 = sin_lut[i % N] / SCALE;
       TIM16->CCR1 = sin_lut[(i + N / 3) % N] / SCALE;
       TIM17->CCR1 = sin_lut[(i + N * 2 / 3) % N] / SCALE;
-      for (int i = 0; i < 100; i++) asm volatile ("nop");
+      spin_delay(100);
     }
     sleep_delay(500);
     TIM14->CCR1 = TIM16->CCR1 = TIM17->CCR1 = 0;
@@ -707,6 +725,13 @@ print(', '.join('%d' % round(8000*(1+sin(i/N*2*pi))) for i in range(N)))
   voltage_str[4] = '0' + vri_mV % 10;
   print_string(pixels, voltage_str, 2, 18);
   char s1[64];
+  for (int i = 0, r = 32; i < 100; i++) {
+    snprintf(s1 + (i % 12) * 2, 3, "%02x", e_adc[i]);
+    if (i % 12 == 11) {
+      print_string(pixels, s1, r, 1);
+      r += 14;
+    }
+  }
   snprintf(s1, 64, "%08lx %08lx\n%08lx %08lx",
     (uint32_t)(mem1 >> 32), (uint32_t)mem1,
     (uint32_t)(mem2 >> 32), (uint32_t)mem2
@@ -714,6 +739,7 @@ print(', '.join('%d' % round(8000*(1+sin(i/N*2*pi))) for i in range(N)))
   print_string(pixels, s1, 100, 0);
   for (int i = 40; i < 50; i++)
     snprintf(s1 + (i - 40) * 4, 5, "%04lx", (s[i] - s[i - 1]) % 65536);
+  snprintf(s1 + 40, 8, " %04lx", s[49] % 65536);
   print_string(pixels, s1, 132, 0);
 
   _epd_cmd(0x24, pixels, sizeof pixels);
