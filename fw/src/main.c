@@ -451,6 +451,16 @@ int main()
   // HAL_GPIO_WritePin(GPIOB, PIN_LED_R | PIN_LED_G | PIN_LED_B, GPIO_PIN_RESET);
   HAL_GPIO_WritePin(GPIOB, PIN_LED_R | PIN_LED_G | PIN_LED_B, GPIO_PIN_SET);
 
+  // Activate EPD driver (SSD1681) reset signal
+  gpio_init = (GPIO_InitTypeDef){
+    .Pin = PIN_EP_NRST,
+    .Mode = GPIO_MODE_OUTPUT_PP,
+    .Pull = GPIO_NOPULL,
+    .Speed = GPIO_SPEED_FREQ_LOW,
+  };
+  HAL_GPIO_Init(GPIOA, &gpio_init);
+  HAL_GPIO_WritePin(GPIOA, PIN_EP_NRST, 0);
+
   // Clocks
   setup_clocks();
   HAL_NVIC_SetPriority(SysTick_IRQn, 0, 0);
@@ -528,6 +538,9 @@ int main()
   HAL_ADC_ConfigChannel(&adc1, &adc_ch13);
 
   HAL_ADCEx_Calibration_Start(&adc1);
+
+  // Wait some time for the voltage to recover?
+  sleep_delay(50);
 
   HAL_ADC_Start(&adc1);
   HAL_ADC_PollForConversion(&adc1, 1000);
@@ -657,14 +670,15 @@ print(', '.join('%d' % round(8000*(1+sin(i/N*2*pi))) for i in range(N)))
   gpio_init.Pull = GPIO_NOPULL;
   gpio_init.Speed = GPIO_SPEED_FREQ_HIGH;
   HAL_GPIO_Init(GPIOA, &gpio_init);
-  // Output EP_NCS (PA4), EP_DCC (PA6 (Rev. 4) / PA1 (Rev. 5)), EP_NRST (PA11)
-  gpio_init.Pin = PIN_EP_NCS | PIN_EP_DCC | PIN_EP_NRST;
+  // Output EP_NCS (PA4), EP_DCC (PA6 (Rev. 4) / PA1 (Rev. 5))
+  // EP_NRST (PA11) is initialised earlier
+  gpio_init.Pin = PIN_EP_NCS | PIN_EP_DCC;
   gpio_init.Mode = GPIO_MODE_OUTPUT_PP;
   gpio_init.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOA, &gpio_init);
-  HAL_GPIO_WritePin(GPIOA, PIN_EP_NCS, GPIO_PIN_SET);
-  HAL_GPIO_WritePin(GPIOA, PIN_EP_DCC, GPIO_PIN_RESET);
-  HAL_GPIO_WritePin(GPIOA, PIN_EP_NRST, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOA, PIN_EP_NCS, 1);
+  HAL_GPIO_WritePin(GPIOA, PIN_EP_DCC, 0);
+  HAL_GPIO_WritePin(GPIOA, PIN_EP_NRST, 0);
   // Input EP_BUSY (PA12)
   gpio_init.Pin = PIN_EP_BUSY;
   gpio_init.Mode = GPIO_MODE_INPUT;
@@ -707,7 +721,7 @@ print(', '.join('%d' % round(8000*(1+sin(i/N*2*pi))) for i in range(N)))
   __attribute__ ((section (".noinit")))
   static uint8_t pixels[200 * 200 / 8];
 
-  epd_reset(false, vri_mV < 2000);
+  epd_reset(false, vri_mV < 2400);
   // Set RAM X-address Start / End position
   epd_cmd(0x44, 0x00, 0x18);  // 0x18 = 200 / 8 - 1
   epd_cmd(0x45, 0xC7, 0x00, 0x00, 0x00);  // 0xC7 = 200 - 1
@@ -802,10 +816,7 @@ void SysTick_Handler()
 void EXTI2_3_IRQHandler()
 {
   setup_clocks();
-  if (0) for (int i = 0; i < 5; i++) {
-    TIM16->CCR1 = 2000; for (volatile int i = 0; i < 20000; i++) asm volatile ("nop");
-    TIM16->CCR1 =    0; for (volatile int i = 0; i < 20000; i++) asm volatile ("nop");
-  }
+  TIM14->CCR1 = 2000; // Display blue
   __HAL_GPIO_EXTI_CLEAR_FALLING_IT(PIN_BUTTON);
 }
 
