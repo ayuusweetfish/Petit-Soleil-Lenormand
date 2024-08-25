@@ -15,9 +15,9 @@ static inline void blit_row(uint8_t *a, uint16_t bit_offs, uint16_t bitset)
 {
   a += bit_offs / 8;
   bit_offs %= 8;
-  a[0] |= rsh(bitset, 12 - 8 * 1 + bit_offs);
-  a[1] |= rsh(bitset, 12 - 8 * 2 + bit_offs) & 0xff;
-  a[2] |= rsh(bitset, 12 - 8 * 3 + bit_offs) & 0xff;
+  a[0] ^= rsh(bitset, 12 - 8 * 1 + bit_offs);
+  a[1] ^= rsh(bitset, 12 - 8 * 2 + bit_offs) & 0xff;
+  a[2] ^= rsh(bitset, 12 - 8 * 3 + bit_offs) & 0xff;
 }
 
 // Returns `advance_x`

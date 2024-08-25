@@ -946,6 +946,8 @@ print(', '.join('%d' % round(8000*(1+sin(i/N*2*pi))) for i in range(N)))
   // Write pixel data
   decode(pixels, image, sizeof image);
 
+  bitmap_font_render_glyph(pixels, 200, 200, 0x591C, 3, 3);
+
   // Print string
   char voltage_str[] = "0.000 V";
   voltage_str[0] = '0' + vri_mV / 1000;
