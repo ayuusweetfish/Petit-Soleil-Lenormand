@@ -480,6 +480,17 @@ void flash_test_write_breakpoint()
   while (1) { }
 }
 
+#define FILE_ADDR___wenquanyi_9pt_bin 0
+#define FILE_SIZE___wenquanyi_9pt_bin 704169
+#include "../misc/bitmap_font/bitmap_font.h"
+
+void bitmap_font_read_data(uint32_t glyph, uint8_t *buf)
+{
+  uint8_t idxbuf[2];
+  flash_read(FILE_ADDR___wenquanyi_9pt_bin + glyph * 2, idxbuf, 2);
+  uint16_t idx = ((uint16_t)idxbuf[0] << 8) | idxbuf[1];
+  flash_read(FILE_ADDR___wenquanyi_9pt_bin + 0x20000 + (uint32_t)idx * 19, buf, 19);
+}
 
 static inline void sleep_delay(uint32_t ticks)
 {
@@ -901,9 +912,13 @@ print(', '.join('%d' % round(8000*(1+sin(i/N*2*pi))) for i in range(N)))
   // Capacity = 0x15 (2^21 B = 2 MiB = 16 Mib)
   swv_printf("MF = %02x\nID = %02x %02x\nUID = %02x%02x%02x%02x\n",
     jedec[0], jedec[1], jedec[2], uid[0], uid[1], uid[2], uid[3]);
+#define MANUFACTURE 0
 #if MANUFACTURE
   flash_test_write_breakpoint();
 #endif
+  uint8_t glyph_data[19] = { 0 };
+  bitmap_font_read_data(0x591C, glyph_data);
+  for (int i = 0; i < 19; i++) swv_printf("%02x%c", glyph_data[i], i == 18 ? '\n' : ' ');
 
   if (1) {
     for (int i = 0; i < N * 3; i++) {

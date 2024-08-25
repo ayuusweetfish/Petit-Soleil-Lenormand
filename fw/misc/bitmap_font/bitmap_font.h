@@ -24,7 +24,7 @@ static inline void blit_row(uint8_t *a, uint16_t bit_offs, uint16_t bitset)
 static inline uint8_t bitmap_font_render_glyph(
   uint8_t *img, uint16_t w, uint16_t h, uint32_t glyph, uint16_t r0, uint16_t c0
 ) {
-  uint8_t data[18];
+  uint8_t data[19];
   bitmap_font_read_data(glyph, data);
 
   int8_t bbx_y = (data[0] & 0xf);

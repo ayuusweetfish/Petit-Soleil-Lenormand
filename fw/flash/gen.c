@@ -5,7 +5,9 @@
 
 static FILE *f_out_gdb;
 
-static uint8_t page_buf[256 * 8];
+#define PAGE_SIZE (256 * 8)
+
+static uint8_t page_buf[PAGE_SIZE];
 static int page_buf_ptr = 0;
 static uint32_t page_start = 0;
 
@@ -25,13 +27,13 @@ static inline void flush_gdb_script()
   fprintf(f_out_gdb, "echo Written page 0x%06x\\n\n", page_start);
 
   page_buf_ptr = 0;
-  page_start += 256 * 32;
+  page_start += PAGE_SIZE;
 }
 
 static inline void add_data(uint8_t data)
 {
   page_buf[page_buf_ptr++] = data;
-  if (page_buf_ptr == 256 * 32) flush_gdb_script();
+  if (page_buf_ptr == PAGE_SIZE) flush_gdb_script();
 }
 
 int main(int argc, char *argv[])
