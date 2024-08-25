@@ -51,6 +51,7 @@ SPI_HandleTypeDef spi1 = { 0 };
 ADC_HandleTypeDef adc1 = { 0 };
 TIM_HandleTypeDef tim14, tim16, tim17;
 
+#pragma GCC push_options
 #pragma GCC optimize("O3")
 static inline void spi_transmit(uint8_t *data, size_t size)
 {
@@ -66,6 +67,11 @@ static inline void spi_transmit(uint8_t *data, size_t size)
   (void)SPI1->DR;
   (void)SPI1->SR;
 */
+}
+
+static inline void spi_receive(uint8_t *data, size_t size)
+{
+  HAL_SPI_Receive(&spi1, data, size, 1000); return;
 }
 
 static inline void _epd_cmd(uint8_t cmd, uint8_t *params, size_t params_size)
@@ -102,6 +108,7 @@ static inline bool epd_waitbusy()
     }
   return true;
 }
+#pragma GCC pop_options
 
 // ffmpeg -i Fische.png -f rawvideo -pix_fmt gray8 - 2>/dev/null | misc/rle
 static const uint8_t image[] = {
@@ -299,6 +306,180 @@ static void epd_reset(bool partial, bool power_save)
   // Min Off Time unchanged from POR value
   epd_cmd(0x0C, 0x8B, 0x8C, 0x86, 0x3F);
 }
+
+#define flash_cs_0() (GPIOB->BSRR = (uint32_t)1 << (9 + 16))
+#define flash_cs_1() (GPIOB->BSRR = (uint32_t)1 << (9))
+
+static inline void spi_flash_tx_rx(
+  uint8_t *txbuf, size_t txsize,
+  uint8_t *rxbuf, size_t rxsize
+) {
+  flash_cs_0();
+  spi_transmit(txbuf, txsize);
+  if (rxsize != 0) {
+    while (SPI1->SR & SPI_SR_BSY) { }
+    spi_receive(rxbuf, rxsize);
+  }
+  flash_cs_1();
+}
+
+#define flash_cmd(_cmd) \
+  spi_flash_tx_rx((_cmd), sizeof (_cmd), NULL, 0)
+#define flash_cmd_sized(_cmd, _cmdlen) \
+  spi_flash_tx_rx((_cmd), (_cmdlen), NULL, 0)
+#define flash_cmd_bi(_cmd, _rxbuf) \
+  spi_flash_tx_rx((_cmd), sizeof (_cmd), (_rxbuf), sizeof (_rxbuf))
+#define flash_cmd_bi_sized(_cmd, _cmdlen, _rxbuf, _rxlen) \
+  spi_flash_tx_rx((_cmd), (_cmdlen), (_rxbuf), (_rxlen))
+
+uint8_t flash_status0()
+{
+  flash_cs_0();
+  uint8_t op_read_status[] = {0x05};
+  spi_transmit(op_read_status, sizeof op_read_status);
+  uint8_t status0;
+  spi_receive(&status0, 1);
+  flash_cs_1();
+  return status0;
+}
+
+__attribute__ ((noinline))
+uint32_t flash_status_all()
+{
+  uint8_t op_read_status;
+  uint8_t status[3];
+  flash_cs_0();
+  op_read_status = 0x05; spi_transmit(&op_read_status, 1); spi_receive(&status[0], 1);
+  flash_cs_1();
+  flash_cs_0();
+  op_read_status = 0x35; spi_transmit(&op_read_status, 1); spi_receive(&status[1], 1);
+  flash_cs_1();
+  flash_cs_0();
+  op_read_status = 0x15; spi_transmit(&op_read_status, 1); spi_receive(&status[2], 1);
+  flash_cs_1();
+  return ((uint32_t)status[2] << 16) | ((uint32_t)status[1] << 8) | status[0];
+}
+
+void flash_wait_poll(uint32_t interval_us)
+{
+  uint8_t status0;
+  flash_cs_0();
+  uint8_t op_read_status[] = {0x05};
+  spi_transmit(op_read_status, sizeof op_read_status);
+  do {
+    // dwt_delay(interval_us * CYC_MICROSECOND);
+    spi_receive(&status0, 1);
+    // swv_printf("BUSY = %u, SysTick = %lu\n", status0 & 1, HAL_GetTick());
+  } while (status0 & 1);
+  flash_cs_1();
+}
+
+void flash_id(uint8_t jedec[3], uint8_t uid[4])
+{
+  uint8_t op_read_jedec[] = {0x9F};
+  flash_cmd_bi_sized(op_read_jedec, sizeof op_read_jedec, jedec, 3);
+  uint8_t op_read_uid[] = {0x4B, 0x00, 0x00, 0x00, 0x00};
+  flash_cmd_bi_sized(op_read_uid, sizeof op_read_uid, uid, 4);
+}
+
+void flash_erase_4k(uint32_t addr)
+{
+  addr &= ~0xFFF;
+  uint8_t op_write_enable[] = {0x06};
+  flash_cmd(op_write_enable);
+  uint8_t op_sector_erase[] = {
+    0x20, // Sector Erase
+    (addr >> 16) & 0xFF, (addr >> 8) & 0xFF, (addr >> 0) & 0xFF,
+  };
+  flash_cmd(op_sector_erase);
+  // Wait for completion (t_SE max. = 400 ms, typ. = 40 ms)
+  flash_wait_poll(1000);
+}
+
+void flash_erase_64k(uint32_t addr)
+{
+  addr &= ~0xFFFF;
+  uint8_t op_write_enable[] = {0x06};
+  flash_cmd(op_write_enable);
+  uint8_t op_sector_erase[] = {
+    0xD8, // 64KB Block Erase
+    (addr >> 16) & 0xFF, (addr >> 8) & 0xFF, (addr >> 0) & 0xFF,
+  };
+  flash_cmd(op_sector_erase);
+  // Wait for completion (t_BE2 max. = 2000 ms, typ. = 150 ms)
+  flash_wait_poll(1000);
+}
+
+void flash_erase_chip()
+{
+  uint8_t op_write_enable[] = {0xC7};
+  flash_cmd(op_write_enable);
+  uint8_t op_chip_erase[] = {
+    0x20, // Chip Erase
+  };
+  flash_cmd(op_chip_erase);
+  // Wait for completion (t_CE max. = 25000 ms, typ. = 5000 ms)
+  flash_wait_poll(10000);
+}
+
+void flash_write_page(uint32_t addr, uint8_t *data, size_t size)
+{
+  // assert(size > 0 && size <= 256);
+  uint8_t op_write_enable[] = {0x06};
+  flash_cmd(op_write_enable);
+  uint8_t op_page_program[260] = {
+    0x02, // Page Program
+    (addr >> 16) & 0xFF, (addr >> 8) & 0xFF, (addr >> 0) & 0xFF,
+  };
+  for (size_t i = 0; i < size; i++)
+    op_page_program[4 + i] = data[i];
+  flash_cmd_sized(op_page_program, 4 + size);
+  // Wait for completion (t_PP max. = 3 ms, typ. = 0.4 ms)
+  flash_wait_poll(100);
+}
+
+__attribute__ ((noinline))
+void flash_read(uint32_t addr, uint8_t *data, size_t size)
+{
+  uint8_t op_read_data[] = {
+    0x03, // Read Data
+    (addr >> 16) & 0xFF, (addr >> 8) & 0xFF, (addr >> 0) & 0xFF,
+  };
+  flash_cmd_bi_sized(op_read_data, sizeof op_read_data, data, size);
+}
+
+uint8_t flash_test_write_buf[256 * 8];
+
+__attribute__ ((noinline))
+void flash_test_write(uint32_t addr, size_t size)
+{
+  for (uint32_t block_start = 0; block_start < size; block_start += 256) {
+    uint32_t block_size = 256;
+    if (block_start + block_size >= size)
+      block_size = size - block_start;
+    flash_write_page(
+      addr + block_start,
+      flash_test_write_buf + block_start,
+      block_size
+    );
+  }
+}
+
+void flash_test_write_breakpoint()
+{
+  swv_printf("all status = %06x\n", flash_status_all());
+  if (*(volatile uint32_t *)flash_test_write_buf == 0x11223344) {
+    uint8_t data[4] = {1, 2, 3, 4};
+    flash_read(0, data, sizeof data);
+    for (int i = 0; i < 4; i++) swv_printf("%d\n", data[i]);
+    flash_erase_4k(0);
+    flash_erase_64k(0);
+    flash_erase_chip();
+    flash_test_write(0, 1);
+  }
+  while (1) { }
+}
+
 
 static inline void sleep_delay(uint32_t ticks)
 {
@@ -664,14 +845,20 @@ print(', '.join('%d' % round(8000*(1+sin(i/N*2*pi))) for i in range(N)))
 
   // ======== SPI ========
   // GPIO ports
-  // SPI1_SCK (PA5), SPI1_MOSI (PA7)
-  gpio_init.Pin = GPIO_PIN_5 | GPIO_PIN_7;
+  // SPI1_SCK (PA5), SPI1_MISO (PA6), SPI1_MOSI (PA7)
+  gpio_init.Pin = GPIO_PIN_5 | GPIO_PIN_6 | GPIO_PIN_7;
   gpio_init.Mode = GPIO_MODE_AF_PP;
   gpio_init.Alternate = GPIO_AF0_SPI1;
   gpio_init.Pull = GPIO_NOPULL;
   gpio_init.Speed = GPIO_SPEED_FREQ_HIGH;
   HAL_GPIO_Init(GPIOA, &gpio_init);
-  // Output EP_NCS (PA4), EP_DCC (PA6 (Rev. 4) / PA1 (Rev. 5))
+  // Output FLASH_CSN (PB9)
+  HAL_GPIO_Init(GPIOB, &(GPIO_InitTypeDef){
+    .Pin = GPIO_PIN_9,
+    .Mode = GPIO_MODE_OUTPUT_PP,
+  });
+  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_9, 1);
+  // Output EP_CSN (PA4), EP_DCC (PA6 (Rev. 4) / PA1 (Rev. 5))
   // EP_NRST (PA11) is initialised earlier
   gpio_init.Pin = PIN_EP_NCS | PIN_EP_DCC;
   gpio_init.Mode = GPIO_MODE_OUTPUT_PP;
@@ -705,6 +892,18 @@ print(', '.join('%d' % round(8000*(1+sin(i/N*2*pi))) for i in range(N)))
   epd_cmd(0x10, 0x01);
 
   TIM14->CCR1 = TIM16->CCR1 = TIM17->CCR1 = 0;
+
+  // Flash test
+  uint8_t jedec[3], uid[4];
+  flash_id(jedec, uid);
+  // Manufacturer = 0xef (Winbond)
+  // Memory type = 0x40
+  // Capacity = 0x15 (2^21 B = 2 MiB = 16 Mib)
+  swv_printf("MF = %02x\nID = %02x %02x\nUID = %02x%02x%02x%02x\n",
+    jedec[0], jedec[1], jedec[2], uid[0], uid[1], uid[2], uid[3]);
+#if MANUFACTURE
+  flash_test_write_breakpoint();
+#endif
 
   if (1) {
     for (int i = 0; i < N * 3; i++) {
