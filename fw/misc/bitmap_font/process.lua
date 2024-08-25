@@ -1,5 +1,4 @@
--- lua % < wenquanyi_9pt.bdf
--- head -n 1221 wenquanyi_9pt.bdf | lua %
+-- lua % < wenquanyi_9pt.bdf > wenquanyi_9pt.bin
 local s = io.read('a')
 
 -- Output format:
