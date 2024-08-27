@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include "../misc/bitmap_font/bitmap_font.h"
+#include "../misc/rng/twofish.h"
 
 #define PIN_LED_R     GPIO_PIN_6
 #define PIN_LED_G     GPIO_PIN_7
@@ -577,12 +578,15 @@ int main()
 
 void sleep_wait_button()
 {
-  // while (HAL_GPIO_ReadPin(GPIOA, PIN_BUTTON) == 1) sleep_delay(10);
+if (0) {
+  while (HAL_GPIO_ReadPin(GPIOA, PIN_BUTTON) == 1) sleep_delay(10);
+} else {
   HAL_SuspendTick();
   HAL_NVIC_EnableIRQ(EXTI2_3_IRQn);
   HAL_PWR_EnterSTOPMode(PWR_LOWPOWERREGULATOR_ON, PWR_STOPENTRY_WFI);
   HAL_ResumeTick();
   HAL_NVIC_DisableIRQ(EXTI2_3_IRQn);
+}
 }
 
   // ======== ADC ========
@@ -621,11 +625,11 @@ void sleep_wait_button()
   swv_printf("HSICAL = %u\n", LL_RCC_HSI_GetCalibration());
 */
 
-  uint32_t s[50];
+  uint32_t e_clocks[50];
   entropy_clocks(
     (uint32_t)mem1 ^ ((uint32_t)(mem2 >> 32)) ^ *(uint32_t *)(UID_BASE + 8) ^ *(uint32_t *)(e_adc + 44),
     (uint32_t)mem2 ^ ((uint32_t)(mem1 >> 32)) ^ *(uint32_t *)(UID_BASE + 4) ^ *(uint32_t *)(e_adc + 96),
-    s);
+    e_clocks);
 
   ADC_ChannelConfTypeDef adc_ch13;
   adc_ch13.Channel = ADC_CHANNEL_VREFINT;
@@ -808,13 +812,13 @@ print(', '.join('%d' % round(8000*(1+sin(i/N*2*pi))) for i in range(N)))
   TIM14->CCR1 = TIM16->CCR1 = TIM17->CCR1 = 0;
 
   // Flash test
-  uint8_t jedec[3], uid[4];
-  flash_id(jedec, uid);
+  uint8_t jedec[3], flash_uid[4];
+  flash_id(jedec, flash_uid);
   // Manufacturer = 0xef (Winbond)
   // Memory type = 0x40
   // Capacity = 0x15 (2^21 B = 2 MiB = 16 Mib)
   swv_printf("MF = %02x\nID = %02x %02x\nUID = %02x%02x%02x%02x\n",
-    jedec[0], jedec[1], jedec[2], uid[0], uid[1], uid[2], uid[3]);
+    jedec[0], jedec[1], jedec[2], flash_uid[0], flash_uid[1], flash_uid[2], flash_uid[3]);
 #define MANUFACTURE 0
 #if MANUFACTURE
   flash_test_write_breakpoint();
@@ -834,6 +838,42 @@ print(', '.join('%d' % round(8000*(1+sin(i/N*2*pi))) for i in range(N)))
     sleep_delay(500);
     TIM14->CCR1 = TIM16->CCR1 = TIM17->CCR1 = 0;
   }
+
+  // Random!
+
+  uint8_t key[16] = { 0 };
+  ((uint64_t *)key)[0] = mem1;
+  ((uint64_t *)key)[1] = mem2;
+  ((uint32_t *)key)[0] ^= ((uint32_t)flash_uid[0] << 17);
+  ((uint32_t *)key)[1] ^= flash_uid[1];
+  ((uint32_t *)key)[2] ^= flash_uid[2];
+  ((uint32_t *)key)[3] ^= flash_uid[3];
+  key[0] ^= (LL_RCC_HSI_GetCalibration() & 0xff);
+  key[1] ^= (*TEMPSENSOR_CAL1_ADDR & 0xff);
+  key[2] ^= (*TEMPSENSOR_CAL2_ADDR & 0xff);
+  key[3] ^= (*VREFINT_CAL_ADDR & 0xff);
+  ((uint32_t *)key)[1] ^= *(uint32_t *)(UID_BASE + 0);
+  ((uint32_t *)key)[2] ^= *(uint32_t *)(UID_BASE + 4);
+  ((uint32_t *)key)[3] ^= *(uint32_t *)(UID_BASE + 8);
+  ((uint32_t *)key)[0] ^= e_clocks[49];
+  ((uint32_t *)key)[1] ^= e_clocks[48];
+  ((uint32_t *)key)[2] ^= e_clocks[47];
+  ((uint32_t *)key)[3] ^= ((adc_vrefint << 16) ^ adc_vri);
+  twofish_set_key((uint32_t *)key, 128);
+
+  uint8_t block[16] = { 0 }, new_block[16];
+  uint32_t accum = 0;
+  for (int it = 0; it < 100; it++) {
+    for (int i = 0; i < 16; i++) block[i] ^= e_adc[i * 3 + it % 5];
+    for (int i = 0; i < 16; i++) block[i] ^= e_clocks[46 - i];
+    ((uint32_t *)block)[it % 4] ^= e_clocks[((uint32_t *)block)[(it + 1) % 4] % 50];
+    twofish_encrypt((uint32_t *)block, (uint32_t *)new_block);
+    for (int i = 0; i < 16; i++) block[i] = new_block[i];
+    for (int i = 0; i < 4; i++) accum ^= ((uint32_t *)block)[i];
+    if (it > 50 && accum < 0x100000000 - 0x100000000 % 36) break;
+  }
+
+  uint8_t card_id = accum % 36;
 
   // ======== Drive display ========
   __attribute__ ((section (".noinit")))
@@ -885,9 +925,9 @@ print(', '.join('%d' % round(8000*(1+sin(i/N*2*pi))) for i in range(N)))
   epd_cmd(0x4F, 0xC7, 0x00);
   // Write pixel data
   // Alpha
-  flash_read_set(FILE_ADDR___cards_bin + 33 * 8000 + 6000, pixels + 200 / 8 * 160, 200 * 40 / 8);
+  flash_read_set(FILE_ADDR___cards_bin + card_id * 8000 + 6000, pixels + 200 / 8 * 160, 200 * 40 / 8);
   // Colour
-  flash_read_xor(FILE_ADDR___cards_bin + 33 * 8000 + 5000, pixels + 200 / 8 * 160, 200 * 40 / 8);
+  flash_read_xor(FILE_ADDR___cards_bin + card_id * 8000 + 5000, pixels + 200 / 8 * 160, 200 * 40 / 8);
   _epd_cmd(0x24, pixels, sizeof pixels);
 
   // Display
@@ -913,13 +953,14 @@ print(', '.join('%d' % round(8000*(1+sin(i/N*2*pi))) for i in range(N)))
   // Clear
   for (int i = 0; i < 200 * 200 / 8; i++) pixels[i] = 0xff;
   // Alpha
-  flash_read_set(FILE_ADDR___cards_bin + 33 * 8000 + 6000, pixels + 200 / 8 * 160, 200 * 40 / 8);
+  flash_read_set(FILE_ADDR___cards_bin + card_id * 8000 + 6000, pixels + 200 / 8 * 160, 200 * 40 / 8);
   // Colour
-  flash_read_xor(FILE_ADDR___cards_bin + 33 * 8000 + 5000, pixels + 200 / 8 * 160, 200 * 40 / 8);
+  flash_read_xor(FILE_ADDR___cards_bin + card_id * 8000 + 5000, pixels + 200 / 8 * 160, 200 * 40 / 8);
   // Print text
-  uint16_t cmt_text[20];
-  flash_read(FILE_ADDR___cards_bin + 33 * 8000 + 7000, (uint8_t *)cmt_text, 40);
-  for (int i = 0; i < 20; i++) cmt_text[i] = __builtin_bswap16(cmt_text[i]);
+  uint16_t cmt_text[40];
+  flash_read(FILE_ADDR___cards_bin + card_id * 8000 + 7000, (uint8_t *)cmt_text, 80);
+  for (int i = 0; i < 39; i++) cmt_text[i] = __builtin_bswap16(cmt_text[i]);
+  cmt_text[39] = 0;
   print_string(pixels, cmt_text, 3, 3);
   _epd_cmd(0x24, pixels, sizeof pixels);
 
