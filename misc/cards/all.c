@@ -1,5 +1,11 @@
 // gcc -O2 -DSTB_IMAGE_IMPLEMENTATION -c -x c stb_image.h
 // gcc -std=c99 all.c stb_image.o
+// ./a.out > cards.bin
+
+/* card_commentary.txt:
+for i, n in enumerate(['Rider', 'Clover', 'Ship', 'House', 'Tree', 'Clouds', 'Snake', 'Coffin', 'Bouquet', 'Scythe', 'Whip', 'Birds', 'Child', 'Fox', 'Bear', 'Stars', 'Stork', 'Dog', 'Tower', 'Garden', 'Mountain', 'Crossroads', 'Mice', 'Heart', 'Ring', 'Book', 'Letter', 'Animus', 'Anima', 'Lily', 'Sun', 'Moon', 'Key', 'Fish', 'Anchor', 'Cross']):
+  print('====== %d ======\nlorem ipsum\n文字 %s\n' % (i + 1, n))
+*/
 
 #include "stb_image.h"  // stb_image - v2.30 (013ac3b)
 
@@ -12,9 +18,10 @@
 
 // Format:
 // (+    0) 200*200 card illustration image
-// (+ 5000) 200*40 card name image
-// (+ 6000) text
-// Total size 7000
+// (+ 5000) 200*40 card name image (colour)
+// (+ 6000) 200*40 card name image (mask)
+// (+ 7000) text
+// Total size 8000
 
 static uint8_t *read_file(const char *restrict path, size_t *restrict len)
 {
@@ -50,6 +57,52 @@ static uint8_t *read_image(const char *restrict path, int expected_w, int expect
   return p;
 }
 
+static uint32_t utf8_codepoint(const uint8_t *restrict a, size_t *restrict _p, size_t n)
+{
+  size_t p = *_p;
+  uint32_t c;
+
+  uint8_t b1 = a[p++];
+  if ((b1 & 0x80) == 0x00) {
+    c = (b1 & 0x7f);
+    goto fin;
+  }
+
+  if (p >= n) return 0xffffffff;
+  uint8_t b2 = a[p++];
+  if ((b1 & 0xe0) == 0xc0) {
+    c = ((uint32_t)(b1 & 0x1f) <<  6) |
+        (b2 & 0x3f);
+    goto fin;
+  }
+
+  if (p >= n) return 0xffffffff;
+  uint8_t b3 = a[p++];
+  if ((b1 & 0xf0) == 0xe0) {
+    c = ((uint32_t)(b1 & 0x0f) << 12) |
+        ((uint32_t)(b2 & 0x3f) <<  6) |
+        (b3 & 0x3f);
+    goto fin;
+  }
+
+  if (p >= n) return 0xffffffff;
+  uint8_t b4 = a[p++];
+  if ((b1 & 0xf8) == 0xf0) {
+    c = ((uint32_t)(b1 & 0x0f) << 18) |
+        ((uint32_t)(b2 & 0x3f) << 12) |
+        ((uint32_t)(b3 & 0x3f) <<  6) |
+        (b4 & 0x3f);
+    goto fin;
+  }
+
+  // Invalid sequence
+  return 0xffffffff;
+
+fin:
+  *_p = p;
+  return c;
+}
+
 int main()
 {
   size_t text_len;
@@ -83,15 +136,38 @@ int main()
     snprintf(path, sizeof path, "card_illustrations/%d.png", i + 1);
     fprintf(stderr, "  illust (%s)\n", path);
     uint8_t *p_illust = read_image(path, 200, 200);
+    for (int i = 0, byte = 0; i < 200 * 200; i++) {
+      byte = (byte << 1) | (p_illust[i * 4] >= 160);
+      if (i % 8 == 7) { putchar(byte); byte = 0; }
+    }
+    stbi_image_free(p_illust);
 
     snprintf(path, sizeof path, "card_names/%d.png", i + 1);
     fprintf(stderr, "  title (%s)\n", path);
     uint8_t *p_name = read_image(path, 200, 40);
-
-    stbi_image_free(p_illust);
+    for (int i = 0, byte = 0; i < 200 * 40; i++) {
+      byte = (byte << 1) | (p_name[i * 4] < 160);
+      if (i % 8 == 7) { putchar(byte); byte = 0; }
+    }
+    for (int i = 0, byte = 0; i < 200 * 40; i++) {
+      byte = (byte << 1) | (p_name[i * 4 + 3] >= 160);
+      if (i % 8 == 7) { putchar(byte); byte = 0; }
+    }
     stbi_image_free(p_name);
 
     fprintf(stderr, "  text (length %d)\n", cmt_len[i]);
+    int char_count = 0;
+    for (size_t j = 0; j < cmt_len[i]; ) {
+      uint32_t c = utf8_codepoint(cmt_start[i], &j, cmt_len[i]);
+      if (c > 0xffff) {
+        fprintf(stderr, "Invalid code point U+%x (only 16-bit supported)\n", c);
+        exit(1);
+      }
+      putchar(c >> 8);
+      putchar(c & 0xff);
+      char_count++;
+    }
+    for (int j = char_count * 2; j < 1000; j++) putchar(0);
   }
 
   return 0;

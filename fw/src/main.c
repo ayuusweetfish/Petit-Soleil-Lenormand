@@ -356,6 +356,29 @@ void flash_read(uint32_t addr, uint8_t *data, size_t size)
   flash_cmd_bi_sized(op_read_data, sizeof op_read_data, data, size);
 }
 
+// TODO: Replace this with direct register access (SPIx->DR)
+#define flash_read_op(_name, _op) \
+void flash_read_##_name(uint32_t addr, uint8_t *data, size_t size) \
+{ \
+  uint8_t op_read_data[] = { \
+    0x03, (addr >> 16) & 0xFF, (addr >> 8) & 0xFF, (addr >> 0) & 0xFF, \
+  }; \
+  flash_cs_0(); \
+  spi_transmit(op_read_data, 4); \
+  uint8_t rxbuf[16]; \
+  for (size_t i = 0; i < size; i += 16) { \
+    size_t rxsize = 16; \
+    if (i + 16 > size) rxsize = size - i; \
+    while (SPI1->SR & SPI_SR_BSY) { } \
+    spi_receive(rxbuf, rxsize); \
+    for (size_t j = 0; j < rxsize; j++) \
+      data[i + j] _op rxbuf[j]; \
+  } \
+  flash_cs_1(); \
+}
+flash_read_op(set, |=)  // flash_read_set
+flash_read_op(xor, ^=)  // flash_read_xor
+
 uint8_t flash_test_write_buf[256 * 8];
 
 __attribute__ ((noinline))
@@ -390,6 +413,8 @@ void flash_test_write_breakpoint()
 
 #define FILE_ADDR___wenquanyi_9pt_bin 0
 #define FILE_SIZE___wenquanyi_9pt_bin 704169
+#define FILE_ADDR___cards_bin        704169
+#define FILE_SIZE___cards_bin        288000
 
 void bitmap_font_read_data(uint32_t glyph, uint8_t *buf)
 {
@@ -851,7 +876,8 @@ print(', '.join('%d' % round(8000*(1+sin(i/N*2*pi))) for i in range(N)))
   epd_cmd(0x4E, 0x00);
   epd_cmd(0x4F, 0xC7, 0x00);
   // Write pixel data
-  decode(pixels, image, sizeof image);
+  // decode(pixels, image, sizeof image);
+  flash_read(FILE_ADDR___cards_bin + 34 * 8000, pixels, 200 * 200 / 8);
 
   // bitmap_font_render_glyph(pixels, 200, 200, 0x591C, 3, 3);
   // for _, c in ipairs({utf8.codepoint(s, 1, -1)}) do print(string.format('0x%04x', c)) end
@@ -902,9 +928,14 @@ print(', '.join('%d' % round(8000*(1+sin(i/N*2*pi))) for i in range(N)))
   epd_cmd(0x4E, 0x00);
   epd_cmd(0x4F, 0xC7, 0x00);
   // Write pixel data
-  decode(pixels, image, sizeof image);
-  decode_set(pixels + 200 / 8 * 160, image_overlay_alpha, sizeof image_overlay_alpha);
-  decode_xor(pixels + 200 / 8 * 160, image_overlay_colour, sizeof image_overlay_colour);
+  // decode(pixels, image, sizeof image);
+  flash_read(FILE_ADDR___cards_bin + 33 * 8000, pixels, 200 * 200 / 8);
+  // Alpha
+  flash_read_set(FILE_ADDR___cards_bin + 33 * 8000 + 6000, pixels + 200 / 8 * 160, 200 * 40 / 8);
+  // Colour
+  flash_read_xor(FILE_ADDR___cards_bin + 33 * 8000 + 5000, pixels + 200 / 8 * 160, 200 * 40 / 8);
+  // decode_set(pixels + 200 / 8 * 160, image_overlay_alpha, sizeof image_overlay_alpha);
+  // decode_xor(pixels + 200 / 8 * 160, image_overlay_colour, sizeof image_overlay_colour);
   _epd_cmd(0x24, pixels, sizeof pixels);
 
   // Display
