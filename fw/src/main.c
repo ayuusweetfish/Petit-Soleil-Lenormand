@@ -144,6 +144,7 @@ static void epd_reset(bool partial, bool power_save)
   epd_cmd(0x11, 0x01);  // Y-, X+
   // Border Waveform Control
   // 0x05 - VBD: GS Transition (Follow LUT, LUT1)
+  // 0x80 - VBD: VCOM
   epd_cmd(0x3C, partial ? 0x80 : 0x05);
   // Temperature Sensor Control
   epd_cmd(0x18, 0x80);  // Internal sensor
@@ -914,6 +915,7 @@ if (0) {
   for (int r = 80; r < 120; r++)
     for (int c = 16; c < 21; c++)
       pixels[r * 200 / 8 + c] = 0x00;
+  // XXX: Maybe load custom waveform with 0x32?
   // Display Update Control 2
   epd_cmd(0x22, 0xB9);  // Load LUT with DISPLAY Mode 2
   // Master Activation
@@ -922,7 +924,7 @@ if (0) {
   // VGH = 10V
   epd_cmd(0x03, 0x03);
   // Source Driving voltage Control
-  // VSH1 = 3V, VSH2 = 3V, VSL = -6V
+  // VSH1 = 2.4V, VSH2 = 2.4V, VSL = -5V
   epd_cmd(0x04, 0x8E, 0x8E, 0x0A);
   // Write RAM
   _epd_cmd(0x24, pixels, sizeof pixels);
