@@ -870,7 +870,7 @@ if (0) {
     entropy_adc(pool, 50);
     sleep_delay(200);
   }
-  sleep_delay(tick + 3000 - HAL_GetTick());
+  sleep_delay(tick + 2000 - HAL_GetTick());
 
   HAL_NVIC_DisableIRQ(TIM3_IRQn);
   __HAL_RCC_TIM3_CLK_DISABLE();
@@ -890,7 +890,8 @@ if (0) {
   // Set starting RAM location
   epd_cmd(0x4E, 0x00);
   epd_cmd(0x4F, 0xC7, 0x00);
-  // Write pixel data
+
+  // Read image
   flash_read(FILE_ADDR___cards_bin + 34 * 8000, pixels, 200 * 200 / 8);
 
   // Print string
@@ -902,11 +903,34 @@ if (0) {
   voltage_str[4] = '0' + vri_mV % 10;
   print_string(pixels, voltage_str, 2, 150);
 
+  // Write pixel data
   _epd_cmd(0x24, pixels, sizeof pixels);
   // Display
   epd_cmd(0x22, 0xC7);  // DISPLAY with DISPLAY Mode 1
   epd_cmd(0x20);
   epd_waitbusy();
+
+  // Greyscale
+  for (int r = 80; r < 120; r++)
+    for (int c = 16; c < 21; c++)
+      pixels[r * 200 / 8 + c] = 0x00;
+  // Display Update Control 2
+  epd_cmd(0x22, 0xB9);  // Load LUT with DISPLAY Mode 2
+  // Master Activation
+  epd_cmd(0x20);
+  epd_waitbusy();
+  // VGH = 10V
+  epd_cmd(0x03, 0x03);
+  // Source Driving voltage Control
+  // VSH1 = 3V, VSH2 = 3V, VSL = -6V
+  epd_cmd(0x04, 0x8E, 0x8E, 0x0A);
+  // Write RAM
+  _epd_cmd(0x24, pixels, sizeof pixels);
+  // Display
+  epd_cmd(0x22, 0xCF);  // DISPLAY with DISPLAY Mode 2
+  epd_cmd(0x20);
+  epd_waitbusy();
+
   // Deep sleep
   // NOTE: Deep sleep mode 2 (0x10, 0x03) results in unstable display?
   epd_cmd(0x10, 0x01);
@@ -920,20 +944,21 @@ if (0) {
 
   sleep_wait_button();
 
-  epd_reset(true, false);
+  epd_reset(true, true);
   // Set RAM X-address Start / End position
   epd_cmd(0x44, 0x00, 0x18);  // 0x18 = 200 / 8 - 1
   epd_cmd(0x45, 0xC7, 0x00, 0x00, 0x00);  // 0xC7 = 200 - 1
   // Set starting RAM location
   epd_cmd(0x4E, 0x00);
   epd_cmd(0x4F, 0xC7, 0x00);
-  // Write pixel data
+
+  flash_read(FILE_ADDR___cards_bin + 34 * 8000, pixels, 200 * 200 / 8);
   // Alpha
   flash_read_set(FILE_ADDR___cards_bin + card_id * 8000 + 6000, pixels + 200 / 8 * 160, 200 * 40 / 8);
   // Colour
   flash_read_xor(FILE_ADDR___cards_bin + card_id * 8000 + 5000, pixels + 200 / 8 * 160, 200 * 40 / 8);
+  // Write pixel data
   _epd_cmd(0x24, pixels, sizeof pixels);
-
   // Display
   epd_cmd(0x22, 0xCF);  // DISPLAY with DISPLAY Mode 2
   epd_cmd(0x20);
@@ -947,6 +972,30 @@ if (0) {
   sleep_wait_button();
 
   // XXX: DRY!
+  epd_reset(true, true);
+  // Set RAM X-address Start / End position
+  epd_cmd(0x44, 0x00, 0x18);  // 0x18 = 200 / 8 - 1
+  epd_cmd(0x45, 0xC7, 0x00, 0x00, 0x00);  // 0xC7 = 200 - 1
+  // Set starting RAM location
+  epd_cmd(0x4E, 0x00);
+  epd_cmd(0x4F, 0xC7, 0x00);
+
+  // VGH = 10V
+  epd_cmd(0x03, 0x03);
+  // Source Driving voltage Control
+  // VSH1 = 3V, VSH2 = 3V, VSL = -6V
+  epd_cmd(0x04, 0x8E, 0x8E, 0x0A);
+
+  for (int r = 80; r < 120; r++)
+    for (int c = 16; c < 21; c++)
+      pixels[r * 200 / 8 + c] = 0x00;
+  // Write pixel data
+  _epd_cmd(0x24, pixels, sizeof pixels);
+  // Display
+  epd_cmd(0x22, 0xCF);  // DISPLAY with DISPLAY Mode 2
+  epd_cmd(0x20);
+  epd_waitbusy();
+
   epd_reset(true, false);
   // Set RAM X-address Start / End position
   epd_cmd(0x44, 0x00, 0x18);  // 0x18 = 200 / 8 - 1
@@ -954,6 +1003,16 @@ if (0) {
   // Set starting RAM location
   epd_cmd(0x4E, 0x00);
   epd_cmd(0x4F, 0xC7, 0x00);
+  // Revert to non-power-save mode
+  // XXX: Why is this required??
+  // Display Update Control 2
+  epd_cmd(0x22, 0xB9);  // Load LUT with DISPLAY Mode 2
+  // Master Activation
+  epd_cmd(0x20);
+  epd_waitbusy();
+  // VSH1 = 9V, VSH2 = 3V, VSL = -12V
+  epd_cmd(0x04, 0x23, 0x94, 0x26);
+
   // Clear
   for (int i = 0; i < 200 * 200 / 8; i++) pixels[i] = 0xff;
   // Alpha
