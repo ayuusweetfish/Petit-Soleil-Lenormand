@@ -2,22 +2,22 @@
 #include <stdint.h>
 #include <stdio.h>
 
-int draw_card(const uint8_t *pool, const size_t len)
+static int draw_card(const uint32_t *pool, const size_t len)
 {
-  uint8_t key[32] = { 0 };
-  for (int i = 0; i < len; i++) key[i % 32] ^= pool[i];
-  twofish_set_key((uint32_t *)key, 256);
+  uint32_t key[8] = { 0 };
+  for (int i = 0; i < len; i++) key[i % 8] ^= pool[i];
+  twofish_set_key(key, 256);
 
-  int n_itrs = (len + 15) / 16;
-  uint8_t block[2][16] = {{ 0 }};
+  int n_itrs = (len + 3) / 4;
+  uint32_t block[2][4] = {{ 0 }};
   uint32_t accum = 0;
   // Twofish cipher in CBC mode
   for (int it = 0; it < n_itrs * 2; it++) {
-    uint8_t *plain = block[it % 2];
-    uint8_t *cipher = block[(it % 2) ^ 1];
-    for (int i = 0; i < 16; i++) plain[i] ^= pool[(it * 16 + i) % len];
-    twofish_encrypt((uint32_t *)block, (uint32_t *)cipher);
-    for (int i = 0; i < 4; i++) accum ^= ((uint32_t *)cipher)[i];
+    uint32_t *plain = block[it % 2];
+    uint32_t *cipher = block[(it % 2) ^ 1];
+    for (int i = 0; i < 4; i++) plain[i] ^= pool[(it * 4 + i) % len];
+    twofish_encrypt(plain, cipher);
+    for (int i = 0; i < 4; i++) accum ^= cipher[i];
     if (it > n_itrs && accum < 0x100000000 - 0x100000000 % 37 && accum % 37 != 0) break;
     if (it == n_itrs * 2 - 1) accum = 34;
   }
@@ -28,14 +28,12 @@ int draw_card(const uint8_t *pool, const size_t len)
 
 int main()
 {
-  uint8_t pool[200] = { 0 };
+  uint32_t pool[50] = { 0 };
   int count[36] = { 0 };
 
   for (int i = 0; i < 2000 * 36; i++) {
-    pool[2] = i >> 16;
-    pool[1] = i >>  8;
-    pool[0] = i >>  0;
-    int c = draw_card(pool, sizeof pool);
+    pool[0] = i;
+    int c = draw_card(pool, sizeof pool / sizeof pool[0]);
     // printf("%3d %2d\n", i, c);
     count[c]++;
   }
