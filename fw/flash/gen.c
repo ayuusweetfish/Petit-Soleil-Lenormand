@@ -51,6 +51,7 @@ int main(int argc, char *argv[])
     return 1;
   }
 
+  // fprintf(f_out_gdb, "target extended-remote localhost:3333\n");
   // fprintf(f_out_gdb, "b flash_test_write_breakpoint\n");
   // fprintf(f_out_gdb, "commands\n");
 

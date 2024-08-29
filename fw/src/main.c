@@ -881,6 +881,11 @@ if (0) {
 
   // Random!
   uint8_t card_id = draw_card(pool, sizeof pool / sizeof pool[0]);
+  // XXX: Debug use only
+if (1) {
+  static const uint8_t candidate_cards[] = {8, 9, 32, 34};
+  card_id = candidate_cards[card_id % (sizeof candidate_cards)] - 1;
+}
 
   // ======== Drive display ========
   __attribute__ ((section (".noinit")))
@@ -896,16 +901,6 @@ if (0) {
 
   // Read image
   flash_read(FILE_ADDR___cards_bin + card_id * 13001, pixels, 200 * 200 / 8);
-
-  // Print string
-  uint16_t voltage_str[] = {'0', '.', '0', '0', '0', ' ', 'V', '\0'};
-  // char16_t voltage_str[] = u"0.000 V";
-  voltage_str[0] = '0' + vri_mV / 1000;
-  voltage_str[2] = '0' + vri_mV / 100 % 10;
-  voltage_str[3] = '0' + vri_mV / 10 % 10;
-  voltage_str[4] = '0' + vri_mV % 10;
-  print_string(pixels, voltage_str, 2, 150);
-
   // Write pixel data
   _epd_cmd(0x24, pixels, sizeof pixels);
   // Display
@@ -1020,6 +1015,16 @@ if (0) {
   for (int i = 0; i < 39; i++) cmt_text[i] = __builtin_bswap16(cmt_text[i]);
   cmt_text[39] = 0;
   print_string(pixels, cmt_text, 3 + (side == 0 ? 40 : 0), 3);
+
+  // Print string
+  uint16_t voltage_str[] = {'0', '.', '0', '0', '0', ' ', 'V', '\0'};
+  // char16_t voltage_str[] = u"0.000 V";
+  voltage_str[0] = '0' + vri_mV / 1000;
+  voltage_str[2] = '0' + vri_mV / 100 % 10;
+  voltage_str[3] = '0' + vri_mV / 10 % 10;
+  voltage_str[4] = '0' + vri_mV % 10;
+  print_string(pixels, voltage_str, 88, 3);
+
   _epd_cmd(0x24, pixels, sizeof pixels);
   // Display
   epd_cmd(0x22, 0xCF);  // DISPLAY with DISPLAY Mode 2

@@ -107,6 +107,13 @@ fin:
 
 int main()
 {
+  size_t directions_len;
+  uint8_t *directions = read_file("card_directions.txt", &directions_len);
+  if (directions_len < 36) {
+    fprintf(stderr, "Insufficient directions (less than 36)\n");
+    exit(1);
+  }
+
   size_t text_len;
   uint8_t *text = read_file("card_commentary.txt", &text_len);
 
@@ -154,7 +161,7 @@ int main()
     stbi_image_free(p_shadow);
 
     // Card name direction
-    putchar(i % 2);
+    putchar(directions[i] - '0');
 
     snprintf(path, sizeof path, "card_names/%d.png", i + 1);
     fprintf(stderr, "  title (%s)\n", path);
