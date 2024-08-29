@@ -18,10 +18,12 @@ for i, n in enumerate(['Rider', 'Clover', 'Ship', 'House', 'Tree', 'Clouds', 'Sn
 
 // Format:
 // (+    0) 200*200 card illustration image
-// (+ 5000) 200*40 card name image (colour)
-// (+ 6000) 200*40 card name image (mask)
-// (+ 7000) text
-// Total size 8000
+// (+ 5000) 200*200 card illustration image (shadow)
+// (+10000) 1 card name side/direction
+// (+10001) 200*40 card name image (colour)
+// (+11001) 200*40 card name image (mask)
+// (+12001) text
+// Total size 13001
 
 static uint8_t *read_file(const char *restrict path, size_t *restrict len)
 {
@@ -133,14 +135,21 @@ int main()
     char path[64];
     fprintf(stderr, "Card %d\n", i + 1);
 
-    snprintf(path, sizeof path, "card_illustrations/%d.png", i + 1);
+    snprintf(path, sizeof path, "card_illustrations/%02d.png", i + 1);
     fprintf(stderr, "  illust (%s)\n", path);
     uint8_t *p_illust = read_image(path, 200, 200);
     for (int i = 0, byte = 0; i < 200 * 200; i++) {
       byte = (byte << 1) | (p_illust[i * 4] >= 160);
       if (i % 8 == 7) { putchar(byte); byte = 0; }
     }
+    for (int i = 0, byte = 0; i < 200 * 200; i++) {
+      byte = (byte << 1) | (p_illust[i * 4] < 160 && p_illust[i * 4] >= 32);
+      if (i % 8 == 7) { putchar(byte); byte = 0; }
+    }
     stbi_image_free(p_illust);
+
+    // Card name direction
+    putchar(i % 2);
 
     snprintf(path, sizeof path, "card_names/%d.png", i + 1);
     fprintf(stderr, "  title (%s)\n", path);

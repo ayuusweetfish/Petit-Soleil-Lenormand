@@ -4,6 +4,14 @@
 
 # ~/.platformio/packages/tool-openocd/bin/openocd -f interface/stlink.cfg -f target/stm32g0x.cfg -c 'adapter speed 32000'
 
+if [ "$1" == "f" ]; then  # flash
+  ~/.platformio/packages/tool-openocd/bin/openocd -f interface/cmsis-dap.cfg -f target/stm32g0x.cfg -c 'program {.pio/build/dev/firmware.elf} verify reset; shutdown'
+  exit
+elif [ "$1" == "s" ]; then  # serve
+  ~/.platformio/packages/tool-openocd/bin/openocd -f interface/cmsis-dap.cfg -f target/stm32g0x.cfg -c 'adapter speed 32000; init'
+  exit
+fi
+
 cat >debug/gdbinit <<EOF
 define hook-quit
   set confirm off

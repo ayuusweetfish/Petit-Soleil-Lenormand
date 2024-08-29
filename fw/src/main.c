@@ -377,7 +377,7 @@ void flash_test_write_breakpoint()
 #define FILE_ADDR___wenquanyi_9pt_bin 0
 #define FILE_SIZE___wenquanyi_9pt_bin 704169
 #define FILE_ADDR___cards_bin        704169
-#define FILE_SIZE___cards_bin        288000
+#define FILE_SIZE___cards_bin        468036
 
 void bitmap_font_read_data(uint32_t glyph, uint8_t *buf)
 {
@@ -893,7 +893,7 @@ if (0) {
   epd_cmd(0x4F, 0xC7, 0x00);
 
   // Read image
-  flash_read(FILE_ADDR___cards_bin + 34 * 8000, pixels, 200 * 200 / 8);
+  flash_read(FILE_ADDR___cards_bin + card_id * 13001, pixels, 200 * 200 / 8);
 
   // Print string
   uint16_t voltage_str[] = {'0', '.', '0', '0', '0', ' ', 'V', '\0'};
@@ -954,11 +954,19 @@ if (0) {
   epd_cmd(0x4E, 0x00);
   epd_cmd(0x4F, 0xC7, 0x00);
 
-  flash_read(FILE_ADDR___cards_bin + 34 * 8000, pixels, 200 * 200 / 8);
+  uint8_t side;
+  flash_read(FILE_ADDR___cards_bin + card_id * 13001 + 10000, &side, 1);
+
+  flash_read(FILE_ADDR___cards_bin + card_id * 13001, pixels, 200 * 200 / 8);
+void overlay_name(uint8_t *pixels, int side, int card_id)
+{
+  int offs = (side == 0 ? 0 : 200 / 8 * 160);
   // Alpha
-  flash_read_set(FILE_ADDR___cards_bin + card_id * 8000 + 6000, pixels + 200 / 8 * 160, 200 * 40 / 8);
+  flash_read_set(FILE_ADDR___cards_bin + card_id * 13001 + 11001, pixels + offs, 200 * 40 / 8);
   // Colour
-  flash_read_xor(FILE_ADDR___cards_bin + card_id * 8000 + 5000, pixels + 200 / 8 * 160, 200 * 40 / 8);
+  flash_read_xor(FILE_ADDR___cards_bin + card_id * 13001 + 10001, pixels + offs, 200 * 40 / 8);
+}
+  overlay_name(pixels, side, card_id);
   // Write pixel data
   _epd_cmd(0x24, pixels, sizeof pixels);
   // Display
@@ -1017,16 +1025,13 @@ if (0) {
 
   // Clear
   for (int i = 0; i < 200 * 200 / 8; i++) pixels[i] = 0xff;
-  // Alpha
-  flash_read_set(FILE_ADDR___cards_bin + card_id * 8000 + 6000, pixels + 200 / 8 * 160, 200 * 40 / 8);
-  // Colour
-  flash_read_xor(FILE_ADDR___cards_bin + card_id * 8000 + 5000, pixels + 200 / 8 * 160, 200 * 40 / 8);
+  overlay_name(pixels, side, card_id);
   // Print text
   uint16_t cmt_text[40];
-  flash_read(FILE_ADDR___cards_bin + card_id * 8000 + 7000, (uint8_t *)cmt_text, 80);
+  flash_read(FILE_ADDR___cards_bin + card_id * 13001 + 12001, (uint8_t *)cmt_text, 80);
   for (int i = 0; i < 39; i++) cmt_text[i] = __builtin_bswap16(cmt_text[i]);
   cmt_text[39] = 0;
-  print_string(pixels, cmt_text, 3, 3);
+  print_string(pixels, cmt_text, 3 + (side == 0 ? 40 : 0), 3);
   _epd_cmd(0x24, pixels, sizeof pixels);
 
   // Display
