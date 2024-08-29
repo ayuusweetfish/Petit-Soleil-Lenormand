@@ -914,6 +914,7 @@ if (0) {
 
   // Greyscale
   flash_read_and(FILE_ADDR___cards_bin + card_id * 13001 + 5000, pixels, 200 * 200 / 8);
+  for (int r = 0; r < 200; r++) for (int c = 0; c < 4; c++) pixels[r * 25 + c] = 0;
   // XXX: Maybe load custom waveform with 0x32?
   // Display Update Control 2
   epd_cmd(0x22, 0xB9);  // Load LUT with DISPLAY Mode 2
@@ -995,7 +996,14 @@ void overlay_name(uint8_t *pixels, int side, int card_id)
   // VSH1 = 3V, VSH2 = 3V, VSL = -6V
   epd_cmd(0x04, 0x8E, 0x8E, 0x0A);
 
-  flash_read_and(FILE_ADDR___cards_bin + card_id * 13001 + 5000, pixels, 200 * 200 / 8);
+  uint16_t cmt_text[40];
+  flash_read(FILE_ADDR___cards_bin + card_id * 13001 + 12001, (uint8_t *)cmt_text, 80);
+  for (int i = 0; i < 39; i++) cmt_text[i] = __builtin_bswap16(cmt_text[i]);
+  cmt_text[39] = 0;
+
+  // flash_read_and(FILE_ADDR___cards_bin + card_id * 13001 + 5000, pixels, 200 * 200 / 8);
+  for (int i = 0; i < 200 * 200 / 8; i++) pixels[i] = 0x00;
+  // print_string(pixels, cmt_text, 3 + (side == 0 ? 40 : 0), 3);
   // Write pixel data
   _epd_cmd(0x24, pixels, sizeof pixels);
   // Display
@@ -1023,14 +1031,15 @@ void overlay_name(uint8_t *pixels, int side, int card_id)
   // Clear
   for (int i = 0; i < 200 * 200 / 8; i++) pixels[i] = 0xff;
   overlay_name(pixels, side, card_id);
+  _epd_cmd(0x24, pixels, sizeof pixels);
+  // Display
+  epd_cmd(0x22, 0xCF);  // DISPLAY with DISPLAY Mode 2
+  epd_cmd(0x20);
+  epd_waitbusy();
+
   // Print text
-  uint16_t cmt_text[40];
-  flash_read(FILE_ADDR___cards_bin + card_id * 13001 + 12001, (uint8_t *)cmt_text, 80);
-  for (int i = 0; i < 39; i++) cmt_text[i] = __builtin_bswap16(cmt_text[i]);
-  cmt_text[39] = 0;
   print_string(pixels, cmt_text, 3 + (side == 0 ? 40 : 0), 3);
   _epd_cmd(0x24, pixels, sizeof pixels);
-
   // Display
   epd_cmd(0x22, 0xCF);  // DISPLAY with DISPLAY Mode 2
   epd_cmd(0x20);
