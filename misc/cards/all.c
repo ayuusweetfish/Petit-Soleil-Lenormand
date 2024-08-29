@@ -135,18 +135,23 @@ int main()
     char path[64];
     fprintf(stderr, "Card %d\n", i + 1);
 
-    snprintf(path, sizeof path, "card_illustrations/%02d.png", i + 1);
+    snprintf(path, sizeof path, "card_illustrations/%02d_outline.png", i + 1);
     fprintf(stderr, "  illust (%s)\n", path);
     uint8_t *p_illust = read_image(path, 200, 200);
     for (int i = 0, byte = 0; i < 200 * 200; i++) {
       byte = (byte << 1) | (p_illust[i * 4] >= 160);
       if (i % 8 == 7) { putchar(byte); byte = 0; }
     }
+    stbi_image_free(p_illust);
+
+    snprintf(path, sizeof path, "card_illustrations/%02d_shadow.png", i + 1);
+    fprintf(stderr, "  shadow (%s)\n", path);
+    uint8_t *p_shadow = read_image(path, 200, 200);
     for (int i = 0, byte = 0; i < 200 * 200; i++) {
-      byte = (byte << 1) | (p_illust[i * 4] < 160 && p_illust[i * 4] >= 32);
+      byte = (byte << 1) | (p_shadow[i * 4] >= 160);
       if (i % 8 == 7) { putchar(byte); byte = 0; }
     }
-    stbi_image_free(p_illust);
+    stbi_image_free(p_shadow);
 
     // Card name direction
     putchar(i % 2);
