@@ -342,6 +342,7 @@ void flash_read_##_name(uint32_t addr, uint8_t *data, size_t size) \
 flash_read_op(set, |=)  // flash_read_set
 flash_read_op(xor, ^=)  // flash_read_xor
 flash_read_op(and, &=)  // flash_read_and
+flash_read_op(clear, &= ~)  // flash_read_clear
 
 uint8_t flash_test_write_buf[256 * 8];
 
@@ -914,7 +915,6 @@ if (0) {
 
   // Greyscale
   flash_read_and(FILE_ADDR___cards_bin + card_id * 13001 + 5000, pixels, 200 * 200 / 8);
-  for (int r = 0; r < 200; r++) for (int c = 0; c < 4; c++) pixels[r * 25 + c] = 0;
   // XXX: Maybe load custom waveform with 0x32?
   // Display Update Control 2
   epd_cmd(0x22, 0xB9);  // Load LUT with DISPLAY Mode 2
@@ -956,17 +956,18 @@ if (0) {
 
   uint8_t side;
   flash_read(FILE_ADDR___cards_bin + card_id * 13001 + 10000, &side, 1);
+  int offs = (side == 0 ? 0 : 200 / 8 * 160);
 
   flash_read(FILE_ADDR___cards_bin + card_id * 13001, pixels, 200 * 200 / 8);
-void overlay_name(uint8_t *pixels, int side, int card_id)
-{
-  int offs = (side == 0 ? 0 : 200 / 8 * 160);
   // Alpha
-  flash_read_set(FILE_ADDR___cards_bin + card_id * 13001 + 11001, pixels + offs, 200 * 40 / 8);
+  flash_read_clear(FILE_ADDR___cards_bin + card_id * 13001 + 11001, pixels + offs, 200 * 40 / 8);
   // Colour
   flash_read_xor(FILE_ADDR___cards_bin + card_id * 13001 + 10001, pixels + offs, 200 * 40 / 8);
-}
-  overlay_name(pixels, side, card_id);
+  // "Previous image" buffer; hence inverted for the name region
+  _epd_cmd(0x26, pixels, sizeof pixels);
+
+  // Xor by alpha mask
+  flash_read_xor(FILE_ADDR___cards_bin + card_id * 13001 + 11001, pixels + offs, 200 * 40 / 8);
   // Write pixel data
   _epd_cmd(0x24, pixels, sizeof pixels);
   // Display
@@ -982,35 +983,6 @@ void overlay_name(uint8_t *pixels, int side, int card_id)
   sleep_wait_button();
 
   // XXX: DRY!
-  epd_reset(true, true);
-  // Set RAM X-address Start / End position
-  epd_cmd(0x44, 0x00, 0x18);  // 0x18 = 200 / 8 - 1
-  epd_cmd(0x45, 0xC7, 0x00, 0x00, 0x00);  // 0xC7 = 200 - 1
-  // Set starting RAM location
-  epd_cmd(0x4E, 0x00);
-  epd_cmd(0x4F, 0xC7, 0x00);
-
-  // VGH = 10V
-  epd_cmd(0x03, 0x03);
-  // Source Driving voltage Control
-  // VSH1 = 3V, VSH2 = 3V, VSL = -6V
-  epd_cmd(0x04, 0x8E, 0x8E, 0x0A);
-
-  uint16_t cmt_text[40];
-  flash_read(FILE_ADDR___cards_bin + card_id * 13001 + 12001, (uint8_t *)cmt_text, 80);
-  for (int i = 0; i < 39; i++) cmt_text[i] = __builtin_bswap16(cmt_text[i]);
-  cmt_text[39] = 0;
-
-  // flash_read_and(FILE_ADDR___cards_bin + card_id * 13001 + 5000, pixels, 200 * 200 / 8);
-  for (int i = 0; i < 200 * 200 / 8; i++) pixels[i] = 0x00;
-  // print_string(pixels, cmt_text, 3 + (side == 0 ? 40 : 0), 3);
-  // Write pixel data
-  _epd_cmd(0x24, pixels, sizeof pixels);
-  // Display
-  epd_cmd(0x22, 0xCF);  // DISPLAY with DISPLAY Mode 2
-  epd_cmd(0x20);
-  epd_waitbusy();
-
   epd_reset(true, false);
   // Set RAM X-address Start / End position
   epd_cmd(0x44, 0x00, 0x18);  // 0x18 = 200 / 8 - 1
@@ -1029,8 +1001,13 @@ void overlay_name(uint8_t *pixels, int side, int card_id)
   epd_cmd(0x04, 0x23, 0x94, 0x26);
 
   // Clear
+  for (int i = 0; i < 200 * 200 / 8; i++) pixels[i] = 0x00;
+  _epd_cmd(0x26, pixels, sizeof pixels);
   for (int i = 0; i < 200 * 200 / 8; i++) pixels[i] = 0xff;
-  overlay_name(pixels, side, card_id);
+  // Alpha
+  flash_read_set(FILE_ADDR___cards_bin + card_id * 13001 + 11001, pixels + offs, 200 * 40 / 8);
+  // Colour
+  flash_read_xor(FILE_ADDR___cards_bin + card_id * 13001 + 10001, pixels + offs, 200 * 40 / 8);
   _epd_cmd(0x24, pixels, sizeof pixels);
   // Display
   epd_cmd(0x22, 0xCF);  // DISPLAY with DISPLAY Mode 2
@@ -1038,6 +1015,10 @@ void overlay_name(uint8_t *pixels, int side, int card_id)
   epd_waitbusy();
 
   // Print text
+  uint16_t cmt_text[40];
+  flash_read(FILE_ADDR___cards_bin + card_id * 13001 + 12001, (uint8_t *)cmt_text, 80);
+  for (int i = 0; i < 39; i++) cmt_text[i] = __builtin_bswap16(cmt_text[i]);
+  cmt_text[39] = 0;
   print_string(pixels, cmt_text, 3 + (side == 0 ? 40 : 0), 3);
   _epd_cmd(0x24, pixels, sizeof pixels);
   // Display
