@@ -432,15 +432,13 @@ static inline void entropy_adc(uint32_t *out_v, int n)
   }
 }
 
-#pragma GCC optimize("O3")
-static inline void entropy_clocks(uint32_t *s, int n)
+static inline void entropy_clocks_start()
 {
-  // LSI-HSI ratio
   __HAL_RCC_TIM16_CLK_ENABLE();
   tim16 = (TIM_HandleTypeDef){
     .Instance = TIM16,
     .Init = {
-      .Prescaler = 3 - 1,
+      .Prescaler = 1 - 1,
       .CounterMode = TIM_COUNTERMODE_UP,
       .Period = 65536 - 1,
       .ClockDivision = TIM_CLOCKDIVISION_DIV1,
@@ -457,15 +455,10 @@ static inline void entropy_clocks(uint32_t *s, int n)
   HAL_TIM_ConfigClockSource(&tim16, &tim16_cfg_ti1);
   HAL_TIMEx_TISelection(&tim16, TIM_TIM16_TI1_LSI, TIM_CHANNEL_1);
   HAL_TIM_Base_Start(&tim16);
+}
 
-  for (int i = 0; i < n; i++) {
-    uint32_t last0 = (i == 0 ? 0 : s[i - 1]);
-    uint32_t last1 = (i == 0 ? 0 : i == 1 ? s[i - 1] : s[i - 2]);
-    int ops = 500 + (((last0 >> 8) ^ last1 ^ (last0 << 4)) & 0x3ff);
-    spin_delay(ops);
-    s[i] ^= TIM16->CNT;
-  }
-
+static inline void entropy_clocks_stop()
+{
   // Stop timer and restore clock source to SYSCLK
   HAL_TIM_Base_Stop(&tim16);
   HAL_TIM_Base_DeInit(&tim16);
@@ -477,6 +470,19 @@ static inline void entropy_clocks(uint32_t *s, int n)
   };
   HAL_TIM_ConfigClockSource(&tim16, &tim16_cfg_int);
   __HAL_RCC_TIM16_CLK_DISABLE();
+}
+
+#pragma GCC optimize("O3")
+static inline void entropy_clocks(uint32_t *s, int n)
+{
+  // LSI-HSI ratio
+  for (int i = 0; i < n; i++) {
+    uint32_t last0 = (i == 0 ? 0 : s[i - 1]);
+    uint32_t last1 = (i == 0 ? 0 : i == 1 ? s[i - 1] : s[i - 2]);
+    int ops = 500 + (((last0 >> 8) ^ last1 ^ (last0 << 4)) & 0x3ff);
+    spin_delay(ops);
+    s[i] ^= TIM16->CNT;
+  }
 }
 
 static int draw_card(const uint32_t *pool, const size_t len)
@@ -580,6 +586,8 @@ int main()
   setup_clocks();
   HAL_NVIC_SetPriority(SysTick_IRQn, 0, 0);
 
+  entropy_clocks_start();
+
   // ======== Button ========
   gpio_init.Pin = PIN_BUTTON;
   gpio_init.Mode = GPIO_MODE_INPUT;
@@ -624,7 +632,7 @@ if (0) {
     .Init = {
       .Prescaler = 1 - 1,
       .CounterMode = TIM_COUNTERMODE_UP,
-      .Period = 500 - 1,
+      .Period = 4000 - 1,
       .ClockDivision = TIM_CLOCKDIVISION_DIV1,
       .RepetitionCounter = 0,
     },
@@ -778,6 +786,7 @@ if (0) {
   };
   entropy_adc(pool, 50);
   entropy_clocks(pool, 50);
+  entropy_clocks_stop();
 
   // ======== LED Timers ========
   // APB1 = 16 MHz
@@ -1070,7 +1079,7 @@ print(', '.join('%d' % round(8000*(1+sin(i/N*2*pi))) for i in range(N)))
   };
   static uint16_t i = 0;
   const int SCALE = 8;
-  i++;
+  i += 5;
   TIM14->CCR1 = sin_lut[i % N] / SCALE;
   TIM16->CCR1 = sin_lut[(i + N / 3) % N] / SCALE;
   TIM17->CCR1 = sin_lut[(i + N * 2 / 3) % N] / SCALE;
