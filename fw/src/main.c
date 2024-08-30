@@ -6,7 +6,7 @@
 #include "../misc/bitmap_font/bitmap_font.h"
 #include "../misc/rng/twofish.h"
 
-#define PIN_LED_R     GPIO_PIN_6
+#define PIN_LED_R     GPIO_PIN_4
 #define PIN_LED_G     GPIO_PIN_7
 #define PIN_LED_B     GPIO_PIN_1
 #define PIN_EP_NCS    GPIO_PIN_4
@@ -98,10 +98,10 @@ static inline bool epd_waitbusy()
   while (HAL_GPIO_ReadPin(GPIOA, PIN_EP_BUSY) == GPIO_PIN_SET)
     if (HAL_GetTick() - t0 > 5000) {
       // Fail!
-      TIM14->CCR1 = TIM16->CCR1 = TIM17->CCR1 = 0;
+      TIM14->CCR1 = TIM3->CCR1 = TIM17->CCR1 = 0;
       for (int i = 0; i < 3; i++) {
-        TIM16->CCR1 = 2000; HAL_Delay(100);
-        TIM16->CCR1 =    0; HAL_Delay(100);
+        TIM3->CCR1 = 2000; HAL_Delay(100);
+        TIM3->CCR1 =    0; HAL_Delay(100);
       }
       HAL_GPIO_WritePin(GPIOA, PIN_PWR_LATCH, 0);
       HAL_Delay(1000);
@@ -640,6 +640,15 @@ if (0) {
   HAL_TIM_Base_Init(&tim3);
   HAL_TIM_Base_Start_IT(&tim3);
 
+  HAL_TIM_PWM_Init(&tim3);
+  TIM_OC_InitTypeDef tim3_ch1_oc_init = {
+    .OCMode = TIM_OCMODE_PWM2,
+    .Pulse = 0, // to be filled
+    .OCPolarity = TIM_OCPOLARITY_LOW,
+  };
+  HAL_TIM_PWM_ConfigChannel(&tim3, &tim3_ch1_oc_init, TIM_CHANNEL_1);
+  HAL_TIM_PWM_Start(&tim3, TIM_CHANNEL_1);
+
   // ======== ADC ========
   gpio_init.Pin = GPIO_PIN_0;
   gpio_init.Mode = GPIO_MODE_ANALOG;
@@ -746,7 +755,7 @@ if (0) {
   // Deep sleep
   epd_cmd(0x10, 0x01);
 
-  TIM14->CCR1 = TIM16->CCR1 = TIM17->CCR1 = 0;
+  TIM14->CCR1 = TIM3->CCR1 = TIM17->CCR1 = 0;
 
   // Flash test
   uint8_t jedec[3], flash_uid[4];
@@ -819,32 +828,13 @@ if (0) {
   HAL_TIM_PWM_ConfigChannel(&tim14, &tim14_ch1_oc_init, TIM_CHANNEL_1);
   HAL_TIM_PWM_Start(&tim14, TIM_CHANNEL_1);
 
-  // LED Red, TIM16
-  gpio_init.Pin = GPIO_PIN_6;
+  // LED Red, TIM3
+  gpio_init.Pin = GPIO_PIN_4;
   gpio_init.Mode = GPIO_MODE_AF_PP;
-  gpio_init.Alternate = GPIO_AF2_TIM16;
+  gpio_init.Alternate = GPIO_AF1_TIM3;
   gpio_init.Pull = GPIO_NOPULL;
   gpio_init.Speed = GPIO_SPEED_FREQ_HIGH;
   HAL_GPIO_Init(GPIOB, &gpio_init);
-  __HAL_RCC_TIM16_CLK_ENABLE();
-  tim16 = (TIM_HandleTypeDef){
-    .Instance = TIM16,
-    .Init = {
-      .Prescaler = 1 - 1,
-      .CounterMode = TIM_COUNTERMODE_UP,
-      .Period = 4000 - 1,
-      .ClockDivision = TIM_CLOCKDIVISION_DIV1,
-      .RepetitionCounter = 0,
-    },
-  };
-  HAL_TIM_PWM_Init(&tim16);
-  TIM_OC_InitTypeDef tim16_ch1_oc_init = {
-    .OCMode = TIM_OCMODE_PWM2,
-    .Pulse = 0, // to be filled
-    .OCNPolarity = TIM_OCNPOLARITY_LOW,  // Output is TIM16_CH1N
-  };
-  HAL_TIM_PWM_ConfigChannel(&tim16, &tim16_ch1_oc_init, TIM_CHANNEL_1);
-  HAL_TIMEx_PWMN_Start(&tim16, TIM_CHANNEL_1);
 
   // LED Green, TIM17
   gpio_init.Pin = GPIO_PIN_7;
@@ -885,8 +875,9 @@ if (0) {
   sleep_delay(tick + 2000 - HAL_GetTick());
 
   HAL_NVIC_DisableIRQ(TIM3_IRQn);
+  TIM14->CCR1 = TIM3->CCR1 = TIM17->CCR1 = 0;
+  spin_delay(4000);
   __HAL_RCC_TIM3_CLK_DISABLE();
-  TIM14->CCR1 = TIM16->CCR1 = TIM17->CCR1 = 0;
 
   // Random!
   uint8_t card_id = draw_card(pool, sizeof pool / sizeof pool[0]);
@@ -982,7 +973,7 @@ if (1) {
   epd_cmd(0x10, 0x01);
 
   // Clear blue LED lit up in the EXTI interrupt handler
-  TIM14->CCR1 = TIM16->CCR1 = TIM17->CCR1 = 0;
+  TIM14->CCR1 = TIM3->CCR1 = TIM17->CCR1 = 0;
 
   sleep_wait_button();
 
@@ -1042,7 +1033,7 @@ if (1) {
   // Deep sleep
   epd_cmd(0x10, 0x03);
 
-  TIM14->CCR1 = TIM16->CCR1 = TIM17->CCR1 = 0;
+  TIM14->CCR1 = TIM3->CCR1 = TIM17->CCR1 = 0;
 
   HAL_GPIO_WritePin(GPIOA, PIN_PWR_LATCH, 0);
   HAL_SuspendTick();
@@ -1081,7 +1072,7 @@ print(', '.join('%d' % round(8000*(1+sin(i/N*2*pi))) for i in range(N)))
   const int SCALE = 8;
   i += 5;
   TIM14->CCR1 = sin_lut[i % N] / SCALE;
-  TIM16->CCR1 = sin_lut[(i + N / 3) % N] / SCALE;
+  TIM3->CCR1 = sin_lut[(i + N / 3) % N] / SCALE;
   TIM17->CCR1 = sin_lut[(i + N * 2 / 3) % N] / SCALE;
 }
 
