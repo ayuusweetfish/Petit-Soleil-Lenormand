@@ -1,5 +1,6 @@
 from krita import *
 from PyQt5.QtWidgets import QMessageBox
+from PyQt5.QtCore import QRect
 
 def message(s):
   b = QMessageBox()
@@ -34,23 +35,29 @@ class CardHelper(Extension):
     merged_shadows = doc.createNode("Merged shadows", "groupLayer")
     root.addChildNode(merged_shadows, None)
 
-    for node in existingChildren:
-      if node.type() == 'grouplayer' and node.visible():
-        if node.opacity() < 100 and 'shadow' in node.name().casefold():
+    for i, node in enumerate(existingChildren):
+      if i == 0 and ('背景' in node.name().casefold() or 'background' in node.name().casefold()):
+        clone = node.duplicate()
+        clone.setVisible(True)
+        merged_outlines.addChildNode(clone, None)
+        merged_shadows.addChildNode(clone.duplicate(), None)
+      elif node.visible():
+        # Opacity is 8-bit integer; 20% corresponds to 51
+        if node.opacity() >= 60:
+          merged_outlines.addChildNode(node.duplicate(), None)
+        elif node.opacity() < 60 and 'shadow' in node.name().casefold():
           clone = node.duplicate()
           clone.setOpacity(255)
           merged_shadows.addChildNode(clone, None)
-        elif node.opacity() > 100:
-          clone = node.duplicate()
-          merged_outlines.addChildNode(clone, None)
 
     # Export
     Krita.instance().setBatchmode(True)
 
     card_id = os.path.basename(doc.fileName())[:2]
     export_path_base = os.path.dirname(doc.fileName()) + os.sep + card_id
-    merged_outlines.save(export_path_base + '_outline.png', int(doc.xRes()), int(doc.yRes()), InfoObject())
-    merged_shadows.save(export_path_base + '_shadow.png', int(doc.xRes()), int(doc.yRes()), InfoObject())
+    full_rect = QRect(0, 0, 200, 200)
+    merged_outlines.save(export_path_base + '_outline.png', int(doc.xRes()), int(doc.yRes()), InfoObject(), full_rect)
+    merged_shadows.save(export_path_base + '_shadow.png', int(doc.xRes()), int(doc.yRes()), InfoObject(), full_rect)
     message('Success!\nImages exported at ' + export_path_base + '_{shadow,outline}.png')
 
     merged_shadows.remove()
