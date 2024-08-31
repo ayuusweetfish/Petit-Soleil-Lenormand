@@ -397,10 +397,23 @@ static inline void sleep_delay(uint32_t ticks)
   }
 }
 
-#pragma GCC optimize("O3")
 static inline void spin_delay(uint32_t cycles)
 {
-  for (uint32_t i = 0; i < cycles; i++) asm volatile ("nop");
+  // GCC (10.3.1 xPack) gives extraneous `cmp r0, #0`??
+  // for (cycles = (cycles - 5) / 4; cycles > 0; cycles--) asm volatile ("");
+  __asm__ volatile (
+    "   cmp %[cycles], #5\n"
+    "   ble 2f\n"
+    "   sub %[cycles], #5\n"
+    "   lsr %[cycles], #2\n"
+    "1: sub %[cycles], #1\n"
+    "   nop\n"
+    "   bne 1b\n"   // 2 cycles if taken
+    "2: \n"
+    : [cycles] "+l" (cycles)
+    : // No output
+    : "cc"
+  );
 }
 
 // Requires `n` to be even
@@ -571,6 +584,12 @@ int main()
   HAL_GPIO_Init(GPIOB, &gpio_init);
   // HAL_GPIO_WritePin(GPIOB, PIN_LED_R | PIN_LED_G | PIN_LED_B, GPIO_PIN_RESET);
   HAL_GPIO_WritePin(GPIOB, PIN_LED_R | PIN_LED_G | PIN_LED_B, GPIO_PIN_SET);
+
+// Debug use only
+for (int i = 0; i < 500; i++) {
+  spin_delay(16000000);
+  HAL_GPIO_WritePin(GPIOB, PIN_LED_R | PIN_LED_G | PIN_LED_B, i % 2);
+}
 
   // Activate EPD driver (SSD1681) reset signal
   gpio_init = (GPIO_InitTypeDef){
