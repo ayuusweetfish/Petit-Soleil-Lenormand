@@ -976,13 +976,18 @@ while (0) {
   HAL_NVIC_SetPriority(TIM3_IRQn, 2, 0);
   HAL_NVIC_EnableIRQ(TIM3_IRQn);
 
-  bool btn_released = false;
+  int btn_released = 10;
   uint32_t btn_released_at = 0;
   uint32_t last_sample = (uint32_t)-100;
-  while (!btn_released || HAL_GetTick() - btn_released_at < 2000) {
-    if (!btn_released && HAL_GPIO_ReadPin(GPIOA, PIN_BUTTON) == 0) {
-      btn_released = true;
-      btn_released_at = HAL_GetTick();
+  while (btn_released > 0 || HAL_GetTick() - btn_released_at < 2000) {
+    if (btn_released > 0) {
+      if (HAL_GPIO_ReadPin(GPIOA, PIN_BUTTON) == 1) {
+        if (--btn_released == 0) {
+          btn_released_at = HAL_GetTick();
+        }
+      } else {
+        if (btn_released < 10) btn_released++;
+      }
     }
     if (HAL_GetTick() - last_sample >= 100) {
       entropy_adc(pool, 20);
@@ -990,7 +995,7 @@ while (0) {
       mix(pool, 20);
       last_sample = HAL_GetTick();
     }
-    HAL_PWR_EnterSLEEPMode(PWR_MAINREGULATOR_ON, PWR_SLEEPENTRY_WFI);
+    sleep_delay(1);
   }
 
   HAL_NVIC_DisableIRQ(TIM3_IRQn);
