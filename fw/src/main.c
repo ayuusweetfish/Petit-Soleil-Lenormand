@@ -420,6 +420,14 @@ static inline void spin_delay(uint32_t cycles)
 // Also mixes in TIM3, if it is enabled
 static inline void entropy_adc(uint32_t *out_v, int n)
 {
+/*
+  HAL_GPIO_Init(GPIOA, &(GPIO_InitTypeDef){
+    .Pin = GPIO_PIN_12,
+    .Mode = GPIO_MODE_ANALOG,
+    .Pull = GPIO_NOPULL,
+    .Speed = GPIO_SPEED_FREQ_HIGH,
+  });
+*/
   ADC_ChannelConfTypeDef adc_ch13;
   adc_ch13.Channel = ADC_CHANNEL_VREFINT;
   adc_ch13.Rank = ADC_REGULAR_RANK_1;
@@ -450,18 +458,21 @@ while (0) {
     if (ch == 0) HAL_ADC_ConfigChannel(&adc1, &adc_ch13);
     else HAL_ADC_ConfigChannel(&adc1, &adc_ch_temp);
     uint32_t v = 0;
-    for (int i = 0; i < n * 4; i++) {
+    for (int i = 0; i < n * 2; i++) {
       HAL_ADC_Start(&adc1);
       HAL_ADC_PollForConversion(&adc1, 1000);
       uint32_t adc_value = HAL_ADC_GetValue(&adc1);
-      HAL_ADC_Stop(&adc1);
-      uint32_t tim3_cnt = TIM3->CNT;
-      v = (v << 4) | ((adc_value ^ (tim3_cnt << 2) ^ (tim3_cnt >> 2)) & 0b1111);
-      if (i % 8 == 7) out_v[i / 8 * 2 + ch] ^= v;
+      // ADC has independent clock, but TIM3 lowest bit does not seem to change (stays at 1)?
+      uint32_t tim_cnt = (TIM3->CNT >> 1) ^ (TIM16->CCR1 << 4);
+      v = (v << 8) | ((adc_value ^ (tim_cnt << 2) ^ (tim_cnt >> 2)) & 0xff);
+      // v = (v << 8) | (adc_value & 0xff);
+      if (i % 4 == 3) out_v[i / 4 * 2 + ch] ^= v;
     }
   }
+  HAL_ADC_Stop(&adc1);
 
   // for (int i = 0; i < n; i++) swv_printf("%08x%c", out_v[i], i % 10 == 9 ? '\n' : ' ');
+  // while (1) { }
 }
 
 static inline void entropy_clocks_start()
@@ -839,7 +850,7 @@ if (0) {
 #endif
 
   // ======== Entropy accumulation ========
-  uint32_t pool[50] = {
+  uint32_t pool[20] = {
     // RAM initialisation
     (uint32_t)(mem1 >> 32),
     (uint32_t)(mem1 >>  0),
@@ -857,16 +868,20 @@ if (0) {
     *TEMPSENSOR_CAL1_ADDR,
     *TEMPSENSOR_CAL2_ADDR,
     *VREFINT_CAL_ADDR,
-    flash_uid[0],
-    flash_uid[1],
-    flash_uid[2],
-    flash_uid[3],
+    0 | ((uint32_t)flash_uid[0] << 24) | ((uint32_t)flash_uid[1] << 16)
+      | ((uint32_t)flash_uid[2] <<  8) | ((uint32_t)flash_uid[3] <<  0),
     // Voltages
     adc_vrefint,
     adc_vri,
   };
-  entropy_adc(pool, 50);
-  entropy_clocks(pool, 50);
+while (1) {
+  uint32_t t0 = HAL_GetTick();
+  entropy_adc(pool, 20);
+  uint32_t t1 = HAL_GetTick();
+  entropy_clocks(pool, 20);
+  uint32_t t2 = HAL_GetTick();
+  swv_printf("%u %u\n", t1 - t0, t2 - t1);
+}
   entropy_clocks_stop();
 
   // ======== LED Timers ========
@@ -941,7 +956,7 @@ if (0) {
 
   uint32_t tick = HAL_GetTick();
   for (int i = 0; i < 2; i++) {
-    entropy_adc(pool, 50);
+    entropy_adc(pool, 20);
     sleep_delay(200);
   }
   sleep_delay(tick + 2000 - HAL_GetTick());
