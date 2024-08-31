@@ -430,7 +430,7 @@ static inline void entropy_adc(uint32_t *out_v, int n)
   adc_ch_temp.Rank = ADC_REGULAR_RANK_1;
   adc_ch_temp.SamplingTime = ADC_SAMPLETIME_1CYCLE_5;
 
-// 167 ms
+  // 1000 samples takes 167 ms
 while (0) {
   HAL_ADC_ConfigChannel(&adc1, &adc_ch13);
   uint32_t t0 = HAL_GetTick();
@@ -444,23 +444,33 @@ while (0) {
   swv_printf("%u - %u\n", t0, t1 - t0);
 }
 
+  // for (int i = 0; i < n; i++) out_v[i] = 0;
+
   for (int ch = 0; ch <= 1; ch++) {
     if (ch == 0) HAL_ADC_ConfigChannel(&adc1, &adc_ch13);
     else HAL_ADC_ConfigChannel(&adc1, &adc_ch_temp);
     uint32_t v = 0;
-    for (int i = 0; i < n * 8; i++) {
+    for (int i = 0; i < n * 4; i++) {
       HAL_ADC_Start(&adc1);
       HAL_ADC_PollForConversion(&adc1, 1000);
       uint32_t adc_value = HAL_ADC_GetValue(&adc1);
       HAL_ADC_Stop(&adc1);
-      v = (v << 2) | ((adc_value ^ TIM3->CNT) & 3);
-      if (i % 16 == 15) out_v[i / 16 * 2 + ch] ^= v;
+      uint32_t tim3_cnt = TIM3->CNT;
+      v = (v << 4) | ((adc_value ^ (tim3_cnt << 2) ^ (tim3_cnt >> 2)) & 0b1111);
+      if (i % 8 == 7) out_v[i / 8 * 2 + ch] ^= v;
     }
   }
+
+  // for (int i = 0; i < n; i++) swv_printf("%08x%c", out_v[i], i % 10 == 9 ? '\n' : ' ');
 }
 
 static inline void entropy_clocks_start()
 {
+  HAL_RCC_OscConfig(&(RCC_OscInitTypeDef){
+    .OscillatorType = RCC_OSCILLATORTYPE_LSI,
+    .LSIState = RCC_LSI_ON,
+  });
+
   __HAL_RCC_TIM16_CLK_ENABLE();
   tim16 = (TIM_HandleTypeDef){
     .Instance = TIM16,
@@ -505,35 +515,27 @@ static inline void entropy_clocks_stop()
   };
   HAL_TIM_ConfigClockSource(&tim16, &tim16_cfg_int);
   __HAL_RCC_TIM16_CLK_DISABLE();
+
+  HAL_RCC_OscConfig(&(RCC_OscInitTypeDef){
+    .OscillatorType = RCC_OSCILLATORTYPE_LSI,
+    .LSIState = RCC_LSI_OFF,
+  });
 }
 
 #pragma GCC optimize("O3")
-static inline void entropy_clocks(uint32_t *s, int n)
+static inline void entropy_clocks(uint32_t *_s, int n)
 {
-  entropy_clocks_start();
-  for (int i = 0; i < n; i++) s[i] = 0;
-  TIM16->CNT = 0;
-/*
-  uint32_t c1a = TIM16->CCR1;
-  uint32_t c1b = TIM16->CCR1;
-  uint32_t t1 = HAL_GetTick();
-  while (HAL_GetTick() == t1) { }
-  uint32_t c2 = TIM16->CCR1;
-  while (HAL_GetTick() == t1 + 1) { }
-  uint32_t c3 = TIM16->CCR1;
-*/
-
+  uint16_t *s = (uint16_t *)_s;
   // LSI-HSI ratio
-  for (int i = 0; i < n; i++) {
-    uint32_t last0 = (i == 0 ? s[n - 1] : s[i - 1]);
-    uint32_t last1 = (i == 0 ? s[n - 2] : i == 1 ? s[n - 1] : s[i - 2]);
+  for (int i = 0; i < n * 2; i++) {
+    uint16_t last0 = (i == 0 ? s[n - 1] : s[i - 1]);
+    uint16_t last1 = (i == 0 ? s[n - 2] : i == 1 ? s[n - 1] : s[i - 2]);
     int ops = 200 + (((last0 << 4) ^ ((uint32_t)(last0 >> 8) * last1)) & 0x7ff);
     spin_delay(ops);
-    s[i] ^= TIM16->CCR1;
+    s[i] += TIM16->CCR1;
   }
-  for (int i = 0; i < n; i++) swv_printf("%5d%c", s[i], i % 8 == 7 ? '\n' : ' ');
-  // swv_printf("\n%u %u %u %u\n", c1a, c1b, c2, c3);
-  while (1) { }
+  // for (int i = 0; i < n * 2; i++) swv_printf("%04x%c", s[i], i % 20 == 19 ? '\n' : ' ');
+  // while (1) { }
 }
 
 static int draw_card(const uint32_t *pool, const size_t len)
@@ -571,10 +573,6 @@ void setup_clocks()
   osc_init.PLL.PLLState = RCC_PLL_OFF;
   HAL_RCC_OscConfig(&osc_init);
 
-  osc_init.OscillatorType = RCC_OSCILLATORTYPE_LSI,
-  osc_init.LSIState = RCC_LSI_ON;
-  HAL_RCC_OscConfig(&osc_init);
-
   RCC_ClkInitTypeDef clk_init = { 0 };
   clk_init.ClockType =
     RCC_CLOCKTYPE_SYSCLK |
@@ -589,10 +587,12 @@ void setup_clocks()
 int main()
 {
   // Entropy from randomly initialised memory
-  uint64_t mem1 = 0, mem2 = 0;
+  uint64_t mem1 = 0, mem2 = 0, mem3 = 0, mem4 = 0;
   for (uint64_t *p = (uint64_t *)0x20000000; p < (uint64_t *)0x20002000; p++) {
     mem1 = mem1 ^ *p;
     mem2 = (mem2 * 17) ^ ((uint64_t)(uint32_t)p + *p);
+    if (__builtin_parity((uint32_t)p)) mem4 += *p;
+    else mem3 += mem2;
   }
 
   HAL_Init();
@@ -609,6 +609,18 @@ int main()
   gpio_init.Pull = GPIO_PULLUP;
   gpio_init.Speed = GPIO_SPEED_FREQ_HIGH;
   HAL_GPIO_Init(GPIOA, &gpio_init);
+
+/*
+  swv_printf("%08x%08x %08x%08x %08x%08x %08x%08x\n",
+    (uint32_t)(mem1 >> 32),
+    (uint32_t)(mem1 >>  0),
+    (uint32_t)(mem2 >> 32),
+    (uint32_t)(mem2 >>  0),
+    (uint32_t)(mem3 >> 32),
+    (uint32_t)(mem3 >>  0),
+    (uint32_t)(mem4 >> 32),
+    (uint32_t)(mem4 >>  0));
+*/
 
   // ======= Power latch ======
   gpio_init = (GPIO_InitTypeDef){
@@ -641,6 +653,8 @@ int main()
   // Clocks
   setup_clocks();
   HAL_NVIC_SetPriority(SysTick_IRQn, 0, 0);
+
+  entropy_clocks_start();
 
   // ======== Button ========
   gpio_init.Pin = PIN_BUTTON;
@@ -831,6 +845,10 @@ if (0) {
     (uint32_t)(mem1 >>  0),
     (uint32_t)(mem2 >> 32),
     (uint32_t)(mem2 >>  0),
+    (uint32_t)(mem3 >> 32),
+    (uint32_t)(mem3 >>  0),
+    (uint32_t)(mem4 >> 32),
+    (uint32_t)(mem4 >>  0),
     // Device signature
     *(uint32_t *)(UID_BASE + 0),
     *(uint32_t *)(UID_BASE + 4),
