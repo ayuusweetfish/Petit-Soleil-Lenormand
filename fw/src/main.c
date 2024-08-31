@@ -549,6 +549,20 @@ static inline void entropy_clocks(uint32_t *_s, int n)
   // while (1) { }
 }
 
+static inline void mix_init(uint32_t key[8])
+{
+  twofish_set_key(key, 256);
+}
+// Requires that `n` be a multiple of 4
+static inline void mix(uint32_t *pool, int n)
+{
+  uint32_t block[4] = { 0 };
+  for (int i = 0; i < n; i += 4) {
+    twofish_encrypt(pool + i, block);
+    for (int j = 0; j < 4; j++) pool[i + j] = block[j];
+  }
+}
+
 static int draw_card(const uint32_t *pool, const size_t len)
 {
   uint32_t key[8] = { 0 };
@@ -648,8 +662,8 @@ int main()
   gpio_init.Mode = GPIO_MODE_OUTPUT_PP;
   gpio_init.Pull = GPIO_PULLDOWN;
   HAL_GPIO_Init(GPIOB, &gpio_init);
-  // HAL_GPIO_WritePin(GPIOB, PIN_LED_R | PIN_LED_G | PIN_LED_B, GPIO_PIN_RESET);
-  HAL_GPIO_WritePin(GPIOB, PIN_LED_R | PIN_LED_G | PIN_LED_B, GPIO_PIN_SET);
+  // Turn off all lights
+  HAL_GPIO_WritePin(GPIOB, PIN_LED_R | PIN_LED_G | PIN_LED_B, 0);
 
   // Activate EPD driver (SSD1681) reset signal
   gpio_init = (GPIO_InitTypeDef){
@@ -760,7 +774,7 @@ if (0) {
   HAL_ADCEx_Calibration_Start(&adc1);
 
   // Wait some time for the voltage to recover?
-  sleep_delay(50);
+  sleep_delay(2);
 
   HAL_ADC_Start(&adc1);
   HAL_ADC_PollForConversion(&adc1, 1000);
@@ -874,15 +888,20 @@ if (0) {
     adc_vrefint,
     adc_vri,
   };
-while (1) {
+  mix_init(pool + 3);
+
+while (0) {
   uint32_t t0 = HAL_GetTick();
   entropy_adc(pool, 20);
   uint32_t t1 = HAL_GetTick();
   entropy_clocks(pool, 20);
   uint32_t t2 = HAL_GetTick();
-  swv_printf("%u %u\n", t1 - t0, t2 - t1);
+  swv_printf("%u %u\n", t1 - t0, t2 - t1);  // 8~9 12~14
 }
-  entropy_clocks_stop();
+  entropy_adc(pool, 20);
+  entropy_clocks(pool, 20);
+  // entropy_clocks_stop();
+  mix(pool, 20);
 
   // ======== LED Timers ========
   // APB1 = 16 MHz
@@ -950,16 +969,29 @@ while (1) {
   HAL_TIM_PWM_ConfigChannel(&tim17, &tim17_ch1_oc_init, TIM_CHANNEL_1);
   HAL_TIMEx_PWMN_Start(&tim17, TIM_CHANNEL_1);
 
+  // swv_printf("tick = %u\n", HAL_GetTick()); // tick = 7
+  // while (HAL_GPIO_ReadPin(GPIOA, PIN_BUTTON) == 0) { }
+
   // ======== Magic colours! ========
   HAL_NVIC_SetPriority(TIM3_IRQn, 2, 0);
   HAL_NVIC_EnableIRQ(TIM3_IRQn);
 
-  uint32_t tick = HAL_GetTick();
-  for (int i = 0; i < 2; i++) {
-    entropy_adc(pool, 20);
-    sleep_delay(200);
+  bool btn_released = false;
+  uint32_t btn_released_at = 0;
+  uint32_t last_sample = (uint32_t)-100;
+  while (!btn_released || HAL_GetTick() - btn_released_at < 2000) {
+    if (!btn_released && HAL_GPIO_ReadPin(GPIOA, PIN_BUTTON) == 0) {
+      btn_released = true;
+      btn_released_at = HAL_GetTick();
+    }
+    if (HAL_GetTick() - last_sample >= 100) {
+      entropy_adc(pool, 20);
+      entropy_clocks(pool, 20);
+      mix(pool, 20);
+      last_sample = HAL_GetTick();
+    }
+    HAL_PWR_EnterSLEEPMode(PWR_MAINREGULATOR_ON, PWR_SLEEPENTRY_WFI);
   }
-  sleep_delay(tick + 2000 - HAL_GetTick());
 
   HAL_NVIC_DisableIRQ(TIM3_IRQn);
   TIM14->CCR1 = TIM3->CCR1 = TIM17->CCR1 = 0;
