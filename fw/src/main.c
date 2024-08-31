@@ -657,13 +657,106 @@ int main()
   HAL_GPIO_Init(GPIOA, &gpio_init);
   HAL_GPIO_WritePin(GPIOA, PIN_PWR_LATCH, 1);
 
-  // ======= Lights ======
-  gpio_init.Pin = PIN_LED_R | PIN_LED_G | PIN_LED_B;
-  gpio_init.Mode = GPIO_MODE_OUTPUT_PP;
-  gpio_init.Pull = GPIO_PULLDOWN;
+  // ======== Clocks ========
+  setup_clocks();
+  HAL_NVIC_SetPriority(SysTick_IRQn, 0, 0);
+
+  entropy_clocks_start();
+
+  // Start the lights as soon as possible
+  // ======== TIM3, used during ADC entropy accumulation and magical lights ========
+  __HAL_RCC_TIM3_CLK_ENABLE();
+  tim3 = (TIM_HandleTypeDef){
+    .Instance = TIM3,
+    .Init = {
+      .Prescaler = 1 - 1,
+      .CounterMode = TIM_COUNTERMODE_UP,
+      .Period = 4000 - 1,
+      .ClockDivision = TIM_CLOCKDIVISION_DIV1,
+      .RepetitionCounter = 0,
+    },
+  };
+  HAL_TIM_Base_Init(&tim3);
+  HAL_TIM_Base_Start_IT(&tim3);
+
+  HAL_TIM_PWM_Init(&tim3);
+  TIM_OC_InitTypeDef tim3_ch1_oc_init = {
+    .OCMode = TIM_OCMODE_PWM2,
+    .Pulse = 0, // to be filled
+    .OCPolarity = TIM_OCPOLARITY_LOW,
+  };
+  HAL_TIM_PWM_ConfigChannel(&tim3, &tim3_ch1_oc_init, TIM_CHANNEL_1);
+  HAL_TIM_PWM_Start(&tim3, TIM_CHANNEL_1);
+
+  // ======== LED Timers ========
+  // APB1 = 16 MHz
+  // period = 4 kHz = 4000 cycles
+
+  // LED Blue, TIM14
+  gpio_init.Pin = GPIO_PIN_1;
+  gpio_init.Mode = GPIO_MODE_AF_PP;
+  gpio_init.Alternate = GPIO_AF0_TIM14;
+  gpio_init.Pull = GPIO_NOPULL;
+  gpio_init.Speed = GPIO_SPEED_FREQ_HIGH;
   HAL_GPIO_Init(GPIOB, &gpio_init);
-  // Turn off all lights
-  HAL_GPIO_WritePin(GPIOB, PIN_LED_R | PIN_LED_G | PIN_LED_B, 0);
+  __HAL_RCC_TIM14_CLK_ENABLE();
+  tim14 = (TIM_HandleTypeDef){
+    .Instance = TIM14,
+    .Init = {
+      .Prescaler = 1 - 1,
+      .CounterMode = TIM_COUNTERMODE_UP,
+      .Period = 4000 - 1,
+      .ClockDivision = TIM_CLOCKDIVISION_DIV1,
+      .RepetitionCounter = 0,
+    },
+  };
+  HAL_TIM_PWM_Init(&tim14);
+  TIM_OC_InitTypeDef tim14_ch1_oc_init = {
+    .OCMode = TIM_OCMODE_PWM2,
+    .Pulse = 0, // to be filled
+    .OCPolarity = TIM_OCPOLARITY_LOW,
+  };
+  HAL_TIM_PWM_ConfigChannel(&tim14, &tim14_ch1_oc_init, TIM_CHANNEL_1);
+  HAL_TIM_PWM_Start(&tim14, TIM_CHANNEL_1);
+
+  // LED Red, TIM3
+  gpio_init.Pin = GPIO_PIN_4;
+  gpio_init.Mode = GPIO_MODE_AF_PP;
+  gpio_init.Alternate = GPIO_AF1_TIM3;
+  gpio_init.Pull = GPIO_NOPULL;
+  gpio_init.Speed = GPIO_SPEED_FREQ_HIGH;
+  HAL_GPIO_Init(GPIOB, &gpio_init);
+
+  // LED Green, TIM17
+  gpio_init.Pin = GPIO_PIN_7;
+  gpio_init.Mode = GPIO_MODE_AF_PP;
+  gpio_init.Alternate = GPIO_AF2_TIM17;
+  gpio_init.Pull = GPIO_NOPULL;
+  gpio_init.Speed = GPIO_SPEED_FREQ_HIGH;
+  HAL_GPIO_Init(GPIOB, &gpio_init);
+  __HAL_RCC_TIM17_CLK_ENABLE();
+  tim17 = (TIM_HandleTypeDef){
+    .Instance = TIM17,
+    .Init = {
+      .Prescaler = 1 - 1,
+      .CounterMode = TIM_COUNTERMODE_UP,
+      .Period = 4000 - 1,
+      .ClockDivision = TIM_CLOCKDIVISION_DIV1,
+      .RepetitionCounter = 0,
+    },
+  };
+  HAL_TIM_PWM_Init(&tim17);
+  TIM_OC_InitTypeDef tim17_ch1_oc_init = {
+    .OCMode = TIM_OCMODE_PWM2,
+    .Pulse = 1, // to be filled
+    .OCNPolarity = TIM_OCNPOLARITY_LOW,  // Output is TIM17_CH1N
+  };
+  HAL_TIM_PWM_ConfigChannel(&tim17, &tim17_ch1_oc_init, TIM_CHANNEL_1);
+  HAL_TIMEx_PWMN_Start(&tim17, TIM_CHANNEL_1);
+
+  // ======== Magic colours! ========
+  HAL_NVIC_SetPriority(TIM3_IRQn, 2, 0);
+  HAL_NVIC_EnableIRQ(TIM3_IRQn);
 
   // Activate EPD driver (SSD1681) reset signal
   gpio_init = (GPIO_InitTypeDef){
@@ -674,12 +767,6 @@ int main()
   };
   HAL_GPIO_Init(GPIOA, &gpio_init);
   HAL_GPIO_WritePin(GPIOA, PIN_EP_NRST, 0);
-
-  // Clocks
-  setup_clocks();
-  HAL_NVIC_SetPriority(SysTick_IRQn, 0, 0);
-
-  entropy_clocks_start();
 
   // ======== Button ========
   gpio_init.Pin = PIN_BUTTON;
@@ -717,30 +804,6 @@ if (0) {
   HAL_NVIC_DisableIRQ(EXTI2_3_IRQn);
 }
 }
-
-  // ======== TIM3, used during ADC entropy accumulation and magical lights ========
-  __HAL_RCC_TIM3_CLK_ENABLE();
-  tim3 = (TIM_HandleTypeDef){
-    .Instance = TIM3,
-    .Init = {
-      .Prescaler = 1 - 1,
-      .CounterMode = TIM_COUNTERMODE_UP,
-      .Period = 4000 - 1,
-      .ClockDivision = TIM_CLOCKDIVISION_DIV1,
-      .RepetitionCounter = 0,
-    },
-  };
-  HAL_TIM_Base_Init(&tim3);
-  HAL_TIM_Base_Start_IT(&tim3);
-
-  HAL_TIM_PWM_Init(&tim3);
-  TIM_OC_InitTypeDef tim3_ch1_oc_init = {
-    .OCMode = TIM_OCMODE_PWM2,
-    .Pulse = 0, // to be filled
-    .OCPolarity = TIM_OCPOLARITY_LOW,
-  };
-  HAL_TIM_PWM_ConfigChannel(&tim3, &tim3_ch1_oc_init, TIM_CHANNEL_1);
-  HAL_TIM_PWM_Start(&tim3, TIM_CHANNEL_1);
 
   // ======== ADC ========
   gpio_init.Pin = GPIO_PIN_0;
@@ -903,79 +966,10 @@ while (0) {
   // entropy_clocks_stop();
   mix(pool, 20);
 
-  // ======== LED Timers ========
-  // APB1 = 16 MHz
-  // period = 4 kHz = 4000 cycles
-
-  // LED Blue, TIM14
-  gpio_init.Pin = GPIO_PIN_1;
-  gpio_init.Mode = GPIO_MODE_AF_PP;
-  gpio_init.Alternate = GPIO_AF0_TIM14;
-  gpio_init.Pull = GPIO_NOPULL;
-  gpio_init.Speed = GPIO_SPEED_FREQ_HIGH;
-  HAL_GPIO_Init(GPIOB, &gpio_init);
-  __HAL_RCC_TIM14_CLK_ENABLE();
-  tim14 = (TIM_HandleTypeDef){
-    .Instance = TIM14,
-    .Init = {
-      .Prescaler = 1 - 1,
-      .CounterMode = TIM_COUNTERMODE_UP,
-      .Period = 4000 - 1,
-      .ClockDivision = TIM_CLOCKDIVISION_DIV1,
-      .RepetitionCounter = 0,
-    },
-  };
-  HAL_TIM_PWM_Init(&tim14);
-  TIM_OC_InitTypeDef tim14_ch1_oc_init = {
-    .OCMode = TIM_OCMODE_PWM2,
-    .Pulse = 0, // to be filled
-    .OCPolarity = TIM_OCPOLARITY_LOW,
-  };
-  HAL_TIM_PWM_ConfigChannel(&tim14, &tim14_ch1_oc_init, TIM_CHANNEL_1);
-  HAL_TIM_PWM_Start(&tim14, TIM_CHANNEL_1);
-
-  // LED Red, TIM3
-  gpio_init.Pin = GPIO_PIN_4;
-  gpio_init.Mode = GPIO_MODE_AF_PP;
-  gpio_init.Alternate = GPIO_AF1_TIM3;
-  gpio_init.Pull = GPIO_NOPULL;
-  gpio_init.Speed = GPIO_SPEED_FREQ_HIGH;
-  HAL_GPIO_Init(GPIOB, &gpio_init);
-
-  // LED Green, TIM17
-  gpio_init.Pin = GPIO_PIN_7;
-  gpio_init.Mode = GPIO_MODE_AF_PP;
-  gpio_init.Alternate = GPIO_AF2_TIM17;
-  gpio_init.Pull = GPIO_NOPULL;
-  gpio_init.Speed = GPIO_SPEED_FREQ_HIGH;
-  HAL_GPIO_Init(GPIOB, &gpio_init);
-  __HAL_RCC_TIM17_CLK_ENABLE();
-  tim17 = (TIM_HandleTypeDef){
-    .Instance = TIM17,
-    .Init = {
-      .Prescaler = 1 - 1,
-      .CounterMode = TIM_COUNTERMODE_UP,
-      .Period = 4000 - 1,
-      .ClockDivision = TIM_CLOCKDIVISION_DIV1,
-      .RepetitionCounter = 0,
-    },
-  };
-  HAL_TIM_PWM_Init(&tim17);
-  TIM_OC_InitTypeDef tim17_ch1_oc_init = {
-    .OCMode = TIM_OCMODE_PWM2,
-    .Pulse = 1, // to be filled
-    .OCNPolarity = TIM_OCNPOLARITY_LOW,  // Output is TIM17_CH1N
-  };
-  HAL_TIM_PWM_ConfigChannel(&tim17, &tim17_ch1_oc_init, TIM_CHANNEL_1);
-  HAL_TIMEx_PWMN_Start(&tim17, TIM_CHANNEL_1);
-
   // swv_printf("tick = %u\n", HAL_GetTick()); // tick = 7
   // while (HAL_GPIO_ReadPin(GPIOA, PIN_BUTTON) == 0) { }
 
-  // ======== Magic colours! ========
-  HAL_NVIC_SetPriority(TIM3_IRQn, 2, 0);
-  HAL_NVIC_EnableIRQ(TIM3_IRQn);
-
+  // ======== Accumulate entropy while the magical lights flash! ========
   int btn_released = 10;
   uint32_t btn_released_at = 0;
   uint32_t last_sample = (uint32_t)-100;
