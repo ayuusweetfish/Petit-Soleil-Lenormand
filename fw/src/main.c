@@ -430,6 +430,20 @@ static inline void entropy_adc(uint32_t *out_v, int n)
   adc_ch_temp.Rank = ADC_REGULAR_RANK_1;
   adc_ch_temp.SamplingTime = ADC_SAMPLETIME_1CYCLE_5;
 
+// 167 ms
+while (0) {
+  HAL_ADC_ConfigChannel(&adc1, &adc_ch13);
+  uint32_t t0 = HAL_GetTick();
+  for (int i = 0; i < 1000; i++) {
+    HAL_ADC_Start(&adc1);
+    HAL_ADC_PollForConversion(&adc1, 1000);
+    HAL_ADC_GetValue(&adc1);
+    HAL_ADC_Stop(&adc1);
+  }
+  uint32_t t1 = HAL_GetTick();
+  swv_printf("%u - %u\n", t0, t1 - t0);
+}
+
   for (int ch = 0; ch <= 1; ch++) {
     if (ch == 0) HAL_ADC_ConfigChannel(&adc1, &adc_ch13);
     else HAL_ADC_ConfigChannel(&adc1, &adc_ch_temp);
@@ -458,7 +472,8 @@ static inline void entropy_clocks_start()
       .RepetitionCounter = 0,
     },
   };
-  HAL_TIM_Base_Init(&tim16);
+  HAL_TIM_IC_Init(&tim16);
+
   TIM_ClockConfigTypeDef tim16_cfg_ti1 = {
     .ClockSource = TIM_CLOCKSOURCE_TI1,
     .ClockPolarity = TIM_CLOCKPOLARITY_RISING,
@@ -467,14 +482,21 @@ static inline void entropy_clocks_start()
   };
   HAL_TIM_ConfigClockSource(&tim16, &tim16_cfg_ti1);
   HAL_TIMEx_TISelection(&tim16, TIM_TIM16_TI1_LSI, TIM_CHANNEL_1);
-  HAL_TIM_Base_Start(&tim16);
+
+  HAL_TIM_IC_ConfigChannel(&tim16, &(TIM_IC_InitTypeDef){
+    .ICPolarity = TIM_ICPOLARITY_BOTHEDGE,
+    .ICSelection = TIM_ICSELECTION_DIRECTTI,
+    .ICPrescaler = TIM_ICPSC_DIV1,
+    .ICFilter = 0,
+  }, TIM_CHANNEL_1);
+  HAL_TIM_IC_Start(&tim16, TIM_CHANNEL_1);
 }
 
 static inline void entropy_clocks_stop()
 {
   // Stop timer and restore clock source to SYSCLK
-  HAL_TIM_Base_Stop(&tim16);
-  HAL_TIM_Base_DeInit(&tim16);
+  HAL_TIM_IC_Stop(&tim16, TIM_CHANNEL_1);
+  HAL_TIM_IC_DeInit(&tim16);
   TIM_ClockConfigTypeDef tim16_cfg_int = {
     .ClockSource = TIM_CLOCKSOURCE_INTERNAL,
     .ClockPolarity = TIM_CLOCKPOLARITY_RISING,
@@ -488,14 +510,30 @@ static inline void entropy_clocks_stop()
 #pragma GCC optimize("O3")
 static inline void entropy_clocks(uint32_t *s, int n)
 {
+  entropy_clocks_start();
+  for (int i = 0; i < n; i++) s[i] = 0;
+  TIM16->CNT = 0;
+/*
+  uint32_t c1a = TIM16->CCR1;
+  uint32_t c1b = TIM16->CCR1;
+  uint32_t t1 = HAL_GetTick();
+  while (HAL_GetTick() == t1) { }
+  uint32_t c2 = TIM16->CCR1;
+  while (HAL_GetTick() == t1 + 1) { }
+  uint32_t c3 = TIM16->CCR1;
+*/
+
   // LSI-HSI ratio
   for (int i = 0; i < n; i++) {
-    uint32_t last0 = (i == 0 ? 0 : s[i - 1]);
-    uint32_t last1 = (i == 0 ? 0 : i == 1 ? s[i - 1] : s[i - 2]);
-    int ops = 500 + (((last0 >> 8) ^ last1 ^ (last0 << 4)) & 0x3ff);
+    uint32_t last0 = (i == 0 ? s[n - 1] : s[i - 1]);
+    uint32_t last1 = (i == 0 ? s[n - 2] : i == 1 ? s[n - 1] : s[i - 2]);
+    int ops = 200 + (((last0 << 4) ^ ((uint32_t)(last0 >> 8) * last1)) & 0x7ff);
     spin_delay(ops);
-    s[i] ^= TIM16->CNT;
+    s[i] ^= TIM16->CCR1;
   }
+  for (int i = 0; i < n; i++) swv_printf("%5d%c", s[i], i % 8 == 7 ? '\n' : ' ');
+  // swv_printf("\n%u %u %u %u\n", c1a, c1b, c2, c3);
+  while (1) { }
 }
 
 static int draw_card(const uint32_t *pool, const size_t len)
@@ -529,7 +567,12 @@ void setup_clocks()
   RCC_OscInitTypeDef osc_init = { 0 };
   osc_init.OscillatorType = RCC_OSCILLATORTYPE_HSI;
   osc_init.HSIState = RCC_HSI_ON;
+  osc_init.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
   osc_init.PLL.PLLState = RCC_PLL_OFF;
+  HAL_RCC_OscConfig(&osc_init);
+
+  osc_init.OscillatorType = RCC_OSCILLATORTYPE_LSI,
+  osc_init.LSIState = RCC_LSI_ON;
   HAL_RCC_OscConfig(&osc_init);
 
   RCC_ClkInitTypeDef clk_init = { 0 };
@@ -585,12 +628,6 @@ int main()
   // HAL_GPIO_WritePin(GPIOB, PIN_LED_R | PIN_LED_G | PIN_LED_B, GPIO_PIN_RESET);
   HAL_GPIO_WritePin(GPIOB, PIN_LED_R | PIN_LED_G | PIN_LED_B, GPIO_PIN_SET);
 
-// Debug use only
-for (int i = 0; i < 500; i++) {
-  spin_delay(16000000);
-  HAL_GPIO_WritePin(GPIOB, PIN_LED_R | PIN_LED_G | PIN_LED_B, i % 2);
-}
-
   // Activate EPD driver (SSD1681) reset signal
   gpio_init = (GPIO_InitTypeDef){
     .Pin = PIN_EP_NRST,
@@ -604,8 +641,6 @@ for (int i = 0; i < 500; i++) {
   // Clocks
   setup_clocks();
   HAL_NVIC_SetPriority(SysTick_IRQn, 0, 0);
-
-  entropy_clocks_start();
 
   // ======== Button ========
   gpio_init.Pin = PIN_BUTTON;
