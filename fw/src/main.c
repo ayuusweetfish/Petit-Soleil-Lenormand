@@ -54,6 +54,8 @@ SPI_HandleTypeDef spi1 = { 0 };
 ADC_HandleTypeDef adc1 = { 0 };
 TIM_HandleTypeDef tim3, tim14, tim16, tim17;
 
+static volatile bool stopped = false;
+static volatile bool btn_active = false;
 static uint32_t magical_intensity = 65536 / 8;
 
 #pragma GCC push_options
@@ -835,14 +837,16 @@ int main()
   EXTI_ConfigTypeDef exti_cfg = {
     .Line = EXTI_LINE_BUTTON,
     .Mode = EXTI_MODE_INTERRUPT,
-    .Trigger = EXTI_TRIGGER_FALLING,
+    .Trigger = EXTI_TRIGGER_RISING_FALLING,
     .GPIOSel = EXTI_GPIOA,
   };
   HAL_EXTI_SetConfigLine(&exti_handle, &exti_cfg);
 
   // Interrupt
   HAL_NVIC_SetPriority(EXTI2_3_IRQn, 1, 0);
-  // Will be enabled later
+  HAL_NVIC_EnableIRQ(EXTI2_3_IRQn);
+
+  btn_active = !(GPIOA->IDR & PIN_BUTTON);
 
 void sleep_wait_button()
 {
@@ -850,10 +854,11 @@ if (0) {
   while (HAL_GPIO_ReadPin(GPIOA, PIN_BUTTON) == 1) sleep_delay(10);
 } else {
   HAL_SuspendTick();
-  HAL_NVIC_EnableIRQ(EXTI2_3_IRQn);
+  EXTI->RTSR1 &= ~EXTI_LINE_BUTTON; // Disable rising trigger
+  stopped = true;
   HAL_PWR_EnterSTOPMode(PWR_LOWPOWERREGULATOR_ON, PWR_STOPENTRY_WFI);
+  EXTI->RTSR1 |= ~EXTI_LINE_BUTTON; // Enable rising trigger
   HAL_ResumeTick();
-  HAL_NVIC_DisableIRQ(EXTI2_3_IRQn);
 }
 }
 
@@ -1021,20 +1026,13 @@ while (0) {
   // while (HAL_GPIO_ReadPin(GPIOA, PIN_BUTTON) == 0) { }
 
   // ======== Accumulate entropy while the magical lights flash! ========
+  uint32_t btn_released_at = 0;
   uint32_t n_rounds = 0;
   uint32_t time_spent = 0;
-  int btn_released = 10;
-  uint32_t btn_released_at = 0;
   uint32_t last_sample = (uint32_t)-100;
-  while (btn_released > 0 || HAL_GetTick() - btn_released_at < 2000) {
-    if (btn_released > 0) {
-      if (HAL_GPIO_ReadPin(GPIOA, PIN_BUTTON) == 1) {
-        if (--btn_released == 0) {
-          btn_released_at = HAL_GetTick();
-        }
-      } else {
-        if (btn_released < 10) btn_released++;
-      }
+  while (btn_released_at == 0 || HAL_GetTick() - btn_released_at < 2000) {
+    if (btn_released_at == 0) {
+      if (!btn_active) btn_released_at = HAL_GetTick();
     } else {
       uint32_t t = HAL_GetTick() - btn_released_at;
       if (t >= 1500)
@@ -1206,9 +1204,13 @@ void SysTick_Handler()
 
 void EXTI2_3_IRQHandler()
 {
-  setup_clocks();
-  TIM14->CCR1 = 2000; // Display blue
-  __HAL_GPIO_EXTI_CLEAR_FALLING_IT(PIN_BUTTON);
+  if (stopped) {
+    setup_clocks();
+    stopped = false;
+    TIM14->CCR1 = 2000; // Display blue
+  }
+  btn_active = !(GPIOA->IDR & PIN_BUTTON);
+  __HAL_GPIO_EXTI_CLEAR_IT(PIN_BUTTON); // Clears both rising and falling signals
 }
 
 void TIM3_IRQHandler()
