@@ -53,6 +53,7 @@ static void swv_printf(const char *restrict fmt, ...)
 SPI_HandleTypeDef spi1 = { 0 };
 ADC_HandleTypeDef adc1 = { 0 };
 TIM_HandleTypeDef tim3, tim14, tim16, tim17;
+RTC_HandleTypeDef rtc;
 
 static volatile bool stopped = false;
 static volatile bool btn_active = false;
@@ -849,19 +850,56 @@ int main()
 
   btn_active = !(GPIOA->IDR & PIN_BUTTON);
 
-void sleep_wait_button()
+void stop_wait_button()
 {
 if (0) {
   while (HAL_GPIO_ReadPin(GPIOA, PIN_BUTTON) == 1) sleep_delay(10);
 } else {
   HAL_SuspendTick();
+
+  __HAL_PWR_CLEAR_FLAG(PWR_FLAG_WUF);
+  __HAL_RTC_WAKEUPTIMER_CLEAR_FLAG(&rtc, RTC_FLAG_WUTF);
+  // 4000 = 2 s / (16 / (32 kHz))
+  // HAL_RTCEx_SetWakeUpTimer_IT(&rtc, 4000, RTC_WAKEUPCLOCK_RTCCLK_DIV16);
+
   EXTI->RTSR1 &= ~EXTI_LINE_BUTTON; // Disable rising trigger
   stopped = true;
+
   HAL_PWR_EnterSTOPMode(PWR_LOWPOWERREGULATOR_ON, PWR_STOPENTRY_WFI);
+
   EXTI->RTSR1 |= ~EXTI_LINE_BUTTON; // Enable rising trigger
+
+  // HAL_RTCEx_DeactivateWakeUpTimer(&rtc);
+
   HAL_ResumeTick();
 }
 }
+
+  // ======== RTC ========
+  // https://community.st.com/t5/stm32-mcus-embedded-software/stm32g071rb-rtc-init-bug/m-p/331272/highlight/true#M23692
+  __HAL_RCC_PWR_CLK_ENABLE();
+  __HAL_RCC_RTCAPB_CLK_ENABLE();
+  HAL_PWR_EnableBkUpAccess();
+  HAL_RCCEx_PeriphCLKConfig(&(RCC_PeriphCLKInitTypeDef){
+    .PeriphClockSelection = RCC_PERIPHCLK_RTC,
+    .RTCClockSelection = RCC_RTCCLKSOURCE_LSI,
+  });
+  rtc = (RTC_HandleTypeDef){
+    .Instance = RTC,
+    .Init = (RTC_InitTypeDef){
+      .HourFormat = RTC_HOURFORMAT_24,
+      .AsynchPrediv = 0x00,
+      .SynchPrediv = 0x00,
+      .OutPut = RTC_OUTPUT_WAKEUP,
+      .OutPutRemap = RTC_OUTPUT_REMAP_NONE,
+      .OutPutPolarity = RTC_OUTPUT_POLARITY_HIGH,
+      .OutPutType = RTC_OUTPUT_TYPE_PUSHPULL,
+      .OutPutPullUp = RTC_OUTPUT_PULLUP_NONE,
+    },
+  };
+  HAL_RTC_Init(&rtc);
+  // __HAL_RCC_RTC_CONFIG(RCC_RTCCLKSOURCE_LSI);
+  __HAL_RCC_RTC_ENABLE();
 
   // ======== ADC ========
   gpio_init.Pin = GPIO_PIN_0;
@@ -1193,7 +1231,7 @@ if (stage == 0 || stage == 3) {
     // Clear blue LED lit up in the EXTI interrupt handler
     TIM14->CCR1 = TIM3->CCR1 = TIM17->CCR1 = 0;
     spin_delay(4000);
-    sleep_wait_button();
+    stop_wait_button();
   }
 
   display_image(1);
@@ -1244,12 +1282,17 @@ print(', '.join('%d' % round(8000*(1+sin(i/N*2*pi))) for i in range(N)))
   TIM17->CCR1 = ((uint32_t)sin_lut[(i + N * 2 / 3) % N] * magical_intensity) >> 16;
 }
 
+void RTC_TAMP_IRQHandler()
+{
+  if (__HAL_RTC_WAKEUPTIMER_GET_FLAG(&rtc, RTC_FLAG_WUTF))
+    __HAL_RTC_WAKEUPTIMER_CLEAR_FLAG(&rtc, RTC_FLAG_WUTF);
+}
+
 void NMI_Handler() { while (1) { } }
 void HardFault_Handler() { while (1) { } }
 void SVC_Handler() { while (1) { } }
 void PendSV_Handler() { while (1) { } }
 void WWDG_IRQHandler() { while (1) { } }
-void RTC_TAMP_IRQHandler() { while (1) { } }
 void FLASH_IRQHandler() { while (1) { } }
 void RCC_IRQHandler() { while (1) { } }
 void EXTI0_1_IRQHandler() { while (1) { } }
