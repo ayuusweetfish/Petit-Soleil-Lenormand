@@ -187,22 +187,45 @@ static void epd_reset(bool partial, bool power_save)
   epd_cmd(0x4F, 0xC7, 0x00);
 }
 
-void epd_write_ram(const uint8_t *pixels)
+static void epd_set_grey()
+{
+  // XXX: Maybe load custom waveform with 0x32?
+  // Display Update Control 2
+  epd_cmd(0x22, 0xB9);  // Load LUT with DISPLAY Mode 2
+  // Master Activation
+  epd_cmd(0x20);
+  epd_waitbusy();
+  // VGH = 10V
+  epd_cmd(0x03, 0x03);
+  // Source Driving voltage Control
+  // VSH1 = 2.4V, VSH2 = 2.4V, VSL = -5V
+  epd_cmd(0x04, 0x8E, 0x8E, 0x0A);
+}
+
+static void epd_write_ram(const uint8_t *pixels)
 {
   _epd_cmd(0x24, pixels, 200 * 200 / 8);
 }
 
-void epd_write_ram_prev(const uint8_t *pixels)
+static void epd_write_ram_prev(const uint8_t *pixels)
 {
-  _epd_cmd(0x24, pixels, 200 * 200 / 8);
+  _epd_cmd(0x26, pixels, 200 * 200 / 8);
 }
 
-void epd_display(bool partial)
+static void epd_display(bool partial)
 {
   if (!partial) epd_cmd(0x22, 0xC7);  // DISPLAY with DISPLAY Mode 1
   else          epd_cmd(0x22, 0xCF);  // DISPLAY with DISPLAY Mode 2
   epd_cmd(0x20);
   epd_waitbusy();
+}
+
+static void epd_sleep()
+{
+  // Deep sleep
+  // NOTE: Deep sleep mode 2 (0x10, 0x03) results in unstable display?
+  epd_cmd(0x10, 0x01);
+  // RAM does not need to be retained if the entire image is re-sent
 }
 
 #define flash_cs_0() (GPIOB->BSRR = (uint32_t)1 << (9 + 16))
@@ -1052,25 +1075,11 @@ if (1) {
 
   // Greyscale
   flash_read_and(FILE_ADDR___cards_bin + card_id * 13001 + 5000, pixels, 200 * 200 / 8);
-  // XXX: Maybe load custom waveform with 0x32?
-  // Display Update Control 2
-  epd_cmd(0x22, 0xB9);  // Load LUT with DISPLAY Mode 2
-  // Master Activation
-  epd_cmd(0x20);
-  epd_waitbusy();
-  // VGH = 10V
-  epd_cmd(0x03, 0x03);
-  // Source Driving voltage Control
-  // VSH1 = 2.4V, VSH2 = 2.4V, VSL = -5V
-  epd_cmd(0x04, 0x8E, 0x8E, 0x0A);
+  epd_set_grey();
   // Write RAM
   epd_write_ram(pixels);
   epd_display(true);
-
-  // Deep sleep
-  // NOTE: Deep sleep mode 2 (0x10, 0x03) results in unstable display?
-  epd_cmd(0x10, 0x01);
-  // RAM does not need to be retained if the entire image is re-sent
+  epd_sleep();
 
   // Blink green
   for (int i = 0; i < 1; i++) {
@@ -1099,8 +1108,7 @@ if (1) {
   // Write pixel data
   epd_write_ram(pixels);
   epd_display(true);
-  // Deep sleep
-  epd_cmd(0x10, 0x01);
+  epd_sleep();
 
   // Clear blue LED lit up in the EXTI interrupt handler
   TIM14->CCR1 = TIM3->CCR1 = TIM17->CCR1 = 0;
@@ -1108,28 +1116,13 @@ if (1) {
 
   sleep_wait_button();
 
-  // XXX: DRY!
   epd_reset(true, false);
-  // Revert to non-power-save mode
-  // XXX: Why is this required??
-  // Display Update Control 2
-  epd_cmd(0x22, 0xB9);  // Load LUT with DISPLAY Mode 2
-  // Master Activation
-  epd_cmd(0x20);
-  epd_waitbusy();
-  // VSH1 = 9V, VSH2 = 3V, VSL = -12V
-  epd_cmd(0x04, 0x23, 0x94, 0x26);
-
   // Clear
-  for (int i = 0; i < 200 * 200 / 8; i++) pixels[i] = 0x00;
-  _epd_cmd(0x26, pixels, sizeof pixels);
   for (int i = 0; i < 200 * 200 / 8; i++) pixels[i] = 0xff;
   // Alpha
   flash_read_set(FILE_ADDR___cards_bin + card_id * 13001 + 11001, pixels + offs, 200 * 40 / 8);
   // Colour
   flash_read_xor(FILE_ADDR___cards_bin + card_id * 13001 + 10001, pixels + offs, 200 * 40 / 8);
-  epd_write_ram(pixels);
-  epd_display(true);
 
   // Print text
   uint16_t cmt_text[40];
@@ -1152,10 +1145,12 @@ if (1) {
     n_rounds_str[i] = '0' + n_rounds % 10;
   print_string(pixels, n_rounds_str, 102, 3);
 
+  for (int i = 0; i < 200 * 200 / 8; i++) pixels[i] ^= 0xff;
+  epd_write_ram_prev(pixels);
+  for (int i = 0; i < 200 * 200 / 8; i++) pixels[i] ^= 0xff;
   epd_write_ram(pixels);
   epd_display(true);
-  // Deep sleep
-  epd_cmd(0x10, 0x03);
+  epd_sleep();
 
   TIM14->CCR1 = TIM3->CCR1 = TIM17->CCR1 = 0;
 
