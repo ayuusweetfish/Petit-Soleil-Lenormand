@@ -56,6 +56,7 @@ TIM_HandleTypeDef tim3, tim14, tim16, tim17;
 
 static volatile bool stopped = false;
 static volatile bool btn_active = false;
+static volatile uint32_t btn_entropy = 0;
 static uint32_t magical_intensity = 65536 / 8;
 
 #pragma GCC push_options
@@ -1042,12 +1043,14 @@ while (0) {
       uint32_t t0 = HAL_GetTick();
       entropy_adc(pool, 20);
       entropy_clocks(pool, 20);
+      pool[0] ^= btn_entropy;
       mix(pool, 20, ++n_rounds);
       last_sample += 100;
       time_spent += (HAL_GetTick() - t0);
     }
     sleep_delay(1);
   }
+  uint32_t btn_entropy_copy = btn_entropy;
 
   // swv_printf("%d\n", samples_t0[n_rounds - 1], samples_t[n_rounds - 1]);
 
@@ -1165,6 +1168,11 @@ if (stage == 0 || stage == 3) {
     time_str[i] = '0' + time_spent % 10;
   print_string(pixels, time_str, 122, 3);
 
+  uint16_t btn_entropy_str[9] = { 0 };
+  for (int i = 0; i < 8; i++)
+    btn_entropy_str[i] = "0123456789abcdef"[(btn_entropy_copy >> ((7 - i) * 4)) % 16];
+  print_string(pixels, btn_entropy_str, 139, 3);
+
   for (int i = 0; i < 200 * 200 / 8; i++) pixels[i] ^= 0xff;
   epd_write_ram_prev(pixels);
   for (int i = 0; i < 200 * 200 / 8; i++) pixels[i] ^= 0xff;
@@ -1210,6 +1218,8 @@ void EXTI2_3_IRQHandler()
     TIM14->CCR1 = 2000; // Display blue
   }
   btn_active = !(GPIOA->IDR & PIN_BUTTON);
+#define rotl32(_x, _n) (((_x) << (_n)) | ((_x) >> (32 - (_n))))
+  btn_entropy = rotl32(btn_entropy, 28) + ((TIM3->CNT << 16) | TIM16->CNT);
   __HAL_GPIO_EXTI_CLEAR_IT(PIN_BUTTON); // Clears both rising and falling signals
 }
 
