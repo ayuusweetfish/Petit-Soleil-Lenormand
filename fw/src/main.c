@@ -189,6 +189,7 @@ static void epd_reset(bool partial, bool power_save)
 
 static void epd_set_grey()
 {
+  epd_reset(false, true);
   // XXX: Maybe load custom waveform with 0x32?
   // Display Update Control 2
   epd_cmd(0x22, 0xB9);  // Load LUT with DISPLAY Mode 2
@@ -1065,35 +1066,50 @@ if (1) {
   __attribute__ ((section (".noinit")))
   static uint8_t pixels[200 * 200 / 8];
 
-  epd_reset(false, vri_mV < 2400);
+  uint8_t side;
+  flash_read(FILE_ADDR___cards_bin + card_id * 13001 + 10000, &side, 1);
+  int offs = (side == 0 ? 0 : 200 / 8 * 160);
+
+void display_image(int stage)
+{
+if (stage == 0 || stage == 3) {
+  if (stage == 0)
+    epd_reset(false, false && vri_mV < 2400);
+    // XXX: Power-save mode results in dimmed shadows (which is preferred)
+    // Maybe we really need to investigate the custom waveform
+  else
+    epd_reset(true, false);
 
   // Read image
   flash_read(FILE_ADDR___cards_bin + card_id * 13001, pixels, 200 * 200 / 8);
   // Write pixel data
+  if (stage == 3) {
+    for (int i = 0; i < 200 * 200 / 8; i++) pixels[i] ^= 0xff;
+    epd_write_ram_prev(pixels);
+    for (int i = 0; i < 200 * 200 / 8; i++) pixels[i] ^= 0xff;
+  }
   epd_write_ram(pixels);
-  epd_display(false);
+  if (stage == 0)
+    epd_display(false);
+  else
+    epd_display(true);
 
   // Greyscale
-  flash_read_and(FILE_ADDR___cards_bin + card_id * 13001 + 5000, pixels, 200 * 200 / 8);
   epd_set_grey();
-  // Write RAM
+  if (stage == 0)
+    epd_write_ram_prev(pixels);
+  flash_read_and(FILE_ADDR___cards_bin + card_id * 13001 + 5000, pixels, 200 * 200 / 8);
+  if (stage == 3) {
+    for (int i = 0; i < 200 * 200 / 8; i++) pixels[i] ^= 0xff;
+    epd_write_ram_prev(pixels);
+    for (int i = 0; i < 200 * 200 / 8; i++) pixels[i] ^= 0xff;
+  }
   epd_write_ram(pixels);
   epd_display(true);
   epd_sleep();
 
-  // Blink green
-  for (int i = 0; i < 1; i++) {
-    TIM17->CCR1 = 500; sleep_delay(100);
-    TIM17->CCR1 = 0; sleep_delay(100);
-  }
-
-  sleep_wait_button();
-
+} else if (stage == 1) {
   epd_reset(true, true);
-
-  uint8_t side;
-  flash_read(FILE_ADDR___cards_bin + card_id * 13001 + 10000, &side, 1);
-  int offs = (side == 0 ? 0 : 200 / 8 * 160);
 
   flash_read(FILE_ADDR___cards_bin + card_id * 13001, pixels, 200 * 200 / 8);
   // Alpha
@@ -1110,12 +1126,7 @@ if (1) {
   epd_display(true);
   epd_sleep();
 
-  // Clear blue LED lit up in the EXTI interrupt handler
-  TIM14->CCR1 = TIM3->CCR1 = TIM17->CCR1 = 0;
-  spin_delay(4000);
-
-  sleep_wait_button();
-
+} else if (stage == 2) {
   epd_reset(true, false);
   // Clear
   for (int i = 0; i < 200 * 200 / 8; i++) pixels[i] = 0xff;
@@ -1151,8 +1162,24 @@ if (1) {
   epd_write_ram(pixels);
   epd_display(true);
   epd_sleep();
+}
+}
 
-  TIM14->CCR1 = TIM3->CCR1 = TIM17->CCR1 = 0;
+  for (int i = 0; i <= 3; i++) {
+    display_image(i);
+    // Blink green
+    for (int i = 0; i < 1; i++) {
+      TIM17->CCR1 = 500; sleep_delay(100);
+      TIM17->CCR1 = 0; sleep_delay(100);
+    }
+
+    // Clear blue LED lit up in the EXTI interrupt handler
+    TIM14->CCR1 = TIM3->CCR1 = TIM17->CCR1 = 0;
+    spin_delay(4000);
+    sleep_wait_button();
+  }
+
+  display_image(1);
 
   HAL_GPIO_WritePin(GPIOA, PIN_PWR_LATCH, 0);
   HAL_SuspendTick();
