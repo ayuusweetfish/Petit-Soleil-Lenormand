@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include "../misc/bitmap_font/bitmap_font.h"
 #include "../misc/rng/twofish.h"
+#include "../misc/rng/xoodoo.h"
 
 #define PIN_LED_R     GPIO_PIN_4
 #define PIN_LED_G     GPIO_PIN_7
@@ -602,16 +603,116 @@ static inline void entropy_clocks(uint32_t *_s, int n)
 
 static inline void mix_init(uint32_t key[8])
 {
-  twofish_set_key(key, 256);
+  // twofish_set_key(key, 256);
 }
-// Requires that `n` be a multiple of 4
+
+/*
+// Threefish block cipher, with keys
 static inline void mix(uint32_t *pool, int n)
 {
-  uint32_t block[4] = { 0 };
-  for (int i = 0; i < n; i += 4) {
-    twofish_encrypt(pool + i, block);
-    for (int j = 0; j < 4; j++) pool[i + j] = block[j];
+  // Skein paper: https://www.schneier.com/wp-content/uploads/2015/01/skein.pdf
+  // Table 4
+  static const int r[8][4] = {
+    // 256-bit (4-word) variant
+    // {14, 16}, {52, 57}, {23, 40}, { 5, 37},
+    // {25, 33}, {46, 12}, {58, 22}, {32, 32},
+    // 512-bit (8-word) variant
+    {46, 36, 19, 37},
+    {33, 27, 14, 42},
+    {17, 49, 36, 39},
+    {44,  9, 54, 56},
+    {39, 30, 34, 24},
+    {13, 50, 10, 17},
+    {25, 29, 39, 43},
+    { 8, 35, 56, 22},
+  };
+  // Table 3
+  static const int p[8] = {
+    2, 1, 4, 7, 6, 5, 0, 3,
   }
+  for (int i = 0; i < n; i += 16) {
+    uint64_t *block = (uint64_t *)(pool + i);
+  }
+}
+*/
+
+/*
+// Keccak-f[400]
+// https://keccak.team/files/Keccak-reference-3.0.pdf
+static inline void keccak_f(void *state) {
+  #define rol(x, s) (((x) << (s)) | ((x) >> (16 - (s))))
+  // Triangular numbers
+  // print(''.join(['%2d, ' % ((i+1)*(i+2)/2 % 16) + ('\n' if i % 6 == 5 else '') for i in range(24)]))
+  static const uint8_t rho[24] = \
+    { 1,  3,  6, 10, 15,  5,
+     12,  4, 13,  7,  2, 14,
+     11,  9,  8,  8,  9, 11,
+     14,  2,  7, 13,  4, 12};
+  static const uint8_t pi[24] = \
+    {10,  7, 11, 17, 18,  3,
+      5, 16,  8, 21, 24,  4,
+     15, 23, 19, 13, 12,  2,
+     20, 14, 22,  9,  6,  1};
+  static const uint16_t RC[24] = \
+    {0x0001, 0x8082, 0x808A,
+     0x8000, 0x808B, 0x0001,
+     0x8081, 0x8009, 0x008A,
+     0x0088, 0x8009, 0x000A,
+     0x808B, 0x008B, 0x8089,
+     0x8003, 0x8002, 0x0080,
+     0x800A, 0x000A, 0x8081,
+     0x8080, 0x0001, 0x8008};
+
+  uint16_t *a = (uint16_t *)state;
+  uint16_t b[5] = {0};
+
+  for (int i = 12; i < 24; i++) {
+    // Theta
+    for (int x = 0; x < 5; x++) {
+      b[x] = 0;
+      for (int y = 0; y < 25; y += 5)
+        b[x] ^= a[x + y];
+    }
+    for (int x = 0; x < 5; x++) {
+      for (int y = 0; y < 25; y += 5)
+        a[y + x] ^= b[(x + 4) % 5] ^ rol(b[(x + 1) % 5], 1);
+    }
+    // Rho and pi
+    uint16_t t = a[1];
+    for (int x = 0; x < 24; x++) {
+      b[0] = a[pi[x]];
+      a[pi[x]] = rol(t, rho[x]);
+      t = b[0];
+    }
+    // Chi
+    for (int y = 0; y < 25; y += 5) {
+      for (int x = 0; x < 5; x++)
+        b[x] = a[y + x];
+      for (int x = 0; x < 5; x++)
+        a[y + x] = b[x] ^ ((~b[(x + 1) % 5]) & b[(x + 2) % 5]);
+    }
+    // Iota
+    a[0] ^= RC[i];
+  }
+}
+*/
+
+static inline void mix(uint32_t *pool, uint32_t n, uint32_t n_round)
+{
+  // swv_printf("Before (round %u)\n", n_round);
+  // for (int i = 0; i < n; i++) swv_printf("%08x%c", pool[i], i % 10 == 9 ? '\n' : ' ');
+
+  // keccak_f(pool);
+  static const uint32_t xoodoo_rc[12] = {
+    0x00000058, 0x00000038, 0x000003C0, 0x000000D0,
+    0x00000120, 0x00000014, 0x00000060, 0x0000002C,
+    0x00000380, 0x000000F0, 0x000001A0, 0x00000012,
+  };
+  xoodoo(pool, xoodoo_rc[n_round % 12]);
+  xoodoo(pool + (n - 12), xoodoo_rc[n_round % 12]);
+
+  // swv_printf("After\n");
+  // for (uint32_t i = 0; i < n; i++) swv_printf("%08x%c", pool[i], i % 10 == 9 ? '\n' : ' ');
 }
 
 static int draw_card(const uint32_t *pool, const size_t len)
@@ -1015,7 +1116,7 @@ while (0) {
   entropy_adc(pool, 20);
   entropy_clocks(pool, 20);
   // entropy_clocks_stop();
-  mix(pool, 20);
+  mix(pool, 20, 0);
 
   // swv_printf("tick = %u\n", HAL_GetTick()); // tick = 7
   // while (HAL_GPIO_ReadPin(GPIOA, PIN_BUTTON) == 0) { }
@@ -1025,6 +1126,7 @@ while (0) {
   int btn_released = 10;
   uint32_t btn_released_at = 0;
   uint32_t last_sample = (uint32_t)-100;
+  // uint32_t samples_t0[40] = { 0 }, samples_t[40] = { 0 };
   while (btn_released > 0 || HAL_GetTick() - btn_released_at < 2000) {
     if (btn_released > 0) {
       if (HAL_GPIO_ReadPin(GPIOA, PIN_BUTTON) == 1) {
@@ -1040,14 +1142,17 @@ while (0) {
         magical_intensity = 65536 / 8 * (2000 - t) / 500 * (2000 - t) / 500;
     }
     if (HAL_GetTick() - last_sample >= 100) {
+      // samples_t0[n_rounds] = HAL_GetTick();
       entropy_adc(pool, 20);
       entropy_clocks(pool, 20);
-      mix(pool, 20);
-      n_rounds++;
-      last_sample = HAL_GetTick();
+      mix(pool, 20, ++n_rounds);
+      last_sample += 100;
+      // samples_t[n_rounds - 1] = last_sample;
     }
     sleep_delay(1);
   }
+
+  // swv_printf("%d\n", samples_t0[n_rounds - 1], samples_t[n_rounds - 1]);
 
   HAL_NVIC_DisableIRQ(TIM3_IRQn);
   TIM14->CCR1 = TIM3->CCR1 = TIM17->CCR1 = 0;
