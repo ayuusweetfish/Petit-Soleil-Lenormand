@@ -57,9 +57,9 @@ static uint32_t magical_intensity = 65536 / 8;
 
 #pragma GCC push_options
 #pragma GCC optimize("O3")
-static inline void spi_transmit(uint8_t *data, size_t size)
+static inline void spi_transmit(const uint8_t *data, size_t size)
 {
-  HAL_SPI_Transmit(&spi1, data, size, 1000); return;
+  HAL_SPI_Transmit(&spi1, (uint8_t *)data, size, 1000); return;
 /*
   for (int i = 0; i < size; i++) {
     while (!(SPI1->SR & SPI_SR_TXE)) { }
@@ -78,7 +78,7 @@ static inline void spi_receive(uint8_t *data, size_t size)
   HAL_SPI_Receive(&spi1, data, size, 1000); return;
 }
 
-static inline void _epd_cmd(uint8_t cmd, uint8_t *params, size_t params_size)
+static inline void _epd_cmd(uint8_t cmd, const uint8_t *params, size_t params_size)
 {
   HAL_GPIO_WritePin(GPIOA, PIN_EP_NCS, GPIO_PIN_RESET);
   HAL_GPIO_WritePin(GPIOA, PIN_EP_DCC, GPIO_PIN_RESET);
@@ -178,6 +178,31 @@ static void epd_reset(bool partial, bool power_save)
   // All weakest strength and maximum duration
   // Min Off Time unchanged from POR value
   epd_cmd(0x0C, 0x8B, 0x8C, 0x86, 0x3F);
+
+  // Set RAM X-address Start / End position
+  epd_cmd(0x44, 0x00, 0x18);  // 0x18 = 200 / 8 - 1
+  epd_cmd(0x45, 0xC7, 0x00, 0x00, 0x00);  // 0xC7 = 200 - 1
+  // Set starting RAM location
+  epd_cmd(0x4E, 0x00);
+  epd_cmd(0x4F, 0xC7, 0x00);
+}
+
+void epd_write_ram(const uint8_t *pixels)
+{
+  _epd_cmd(0x24, pixels, 200 * 200 / 8);
+}
+
+void epd_write_ram_prev(const uint8_t *pixels)
+{
+  _epd_cmd(0x24, pixels, 200 * 200 / 8);
+}
+
+void epd_display(bool partial)
+{
+  if (!partial) epd_cmd(0x22, 0xC7);  // DISPLAY with DISPLAY Mode 1
+  else          epd_cmd(0x22, 0xCF);  // DISPLAY with DISPLAY Mode 2
+  epd_cmd(0x20);
+  epd_waitbusy();
 }
 
 #define flash_cs_0() (GPIOB->BSRR = (uint32_t)1 << (9 + 16))
@@ -609,6 +634,8 @@ void setup_clocks()
   clk_init.AHBCLKDivider = RCC_SYSCLK_DIV4;     // 4 MHz
   clk_init.APB1CLKDivider = RCC_HCLK_DIV4;      // 4 MHz
   HAL_RCC_ClockConfig(&clk_init, FLASH_LATENCY_2);
+
+  entropy_clocks_start();
 }
 
 int main()
@@ -662,8 +689,6 @@ int main()
   // ======== Clocks ========
   setup_clocks();
   HAL_NVIC_SetPriority(SysTick_IRQn, 0, 0);
-
-  entropy_clocks_start();
 
   // Start the lights as soon as possible
   // ======== TIM3, used during ADC entropy accumulation and magical lights ========
@@ -972,6 +997,7 @@ while (0) {
   // while (HAL_GPIO_ReadPin(GPIOA, PIN_BUTTON) == 0) { }
 
   // ======== Accumulate entropy while the magical lights flash! ========
+  uint32_t n_rounds = 0;
   int btn_released = 10;
   uint32_t btn_released_at = 0;
   uint32_t last_sample = (uint32_t)-100;
@@ -993,6 +1019,7 @@ while (0) {
       entropy_adc(pool, 20);
       entropy_clocks(pool, 20);
       mix(pool, 20);
+      n_rounds++;
       last_sample = HAL_GetTick();
     }
     sleep_delay(1);
@@ -1016,21 +1043,12 @@ if (1) {
   static uint8_t pixels[200 * 200 / 8];
 
   epd_reset(false, vri_mV < 2400);
-  // Set RAM X-address Start / End position
-  epd_cmd(0x44, 0x00, 0x18);  // 0x18 = 200 / 8 - 1
-  epd_cmd(0x45, 0xC7, 0x00, 0x00, 0x00);  // 0xC7 = 200 - 1
-  // Set starting RAM location
-  epd_cmd(0x4E, 0x00);
-  epd_cmd(0x4F, 0xC7, 0x00);
 
   // Read image
   flash_read(FILE_ADDR___cards_bin + card_id * 13001, pixels, 200 * 200 / 8);
   // Write pixel data
-  _epd_cmd(0x24, pixels, sizeof pixels);
-  // Display
-  epd_cmd(0x22, 0xC7);  // DISPLAY with DISPLAY Mode 1
-  epd_cmd(0x20);
-  epd_waitbusy();
+  epd_write_ram(pixels);
+  epd_display(false);
 
   // Greyscale
   flash_read_and(FILE_ADDR___cards_bin + card_id * 13001 + 5000, pixels, 200 * 200 / 8);
@@ -1046,11 +1064,8 @@ if (1) {
   // VSH1 = 2.4V, VSH2 = 2.4V, VSL = -5V
   epd_cmd(0x04, 0x8E, 0x8E, 0x0A);
   // Write RAM
-  _epd_cmd(0x24, pixels, sizeof pixels);
-  // Display
-  epd_cmd(0x22, 0xCF);  // DISPLAY with DISPLAY Mode 2
-  epd_cmd(0x20);
-  epd_waitbusy();
+  epd_write_ram(pixels);
+  epd_display(true);
 
   // Deep sleep
   // NOTE: Deep sleep mode 2 (0x10, 0x03) results in unstable display?
@@ -1066,12 +1081,6 @@ if (1) {
   sleep_wait_button();
 
   epd_reset(true, true);
-  // Set RAM X-address Start / End position
-  epd_cmd(0x44, 0x00, 0x18);  // 0x18 = 200 / 8 - 1
-  epd_cmd(0x45, 0xC7, 0x00, 0x00, 0x00);  // 0xC7 = 200 - 1
-  // Set starting RAM location
-  epd_cmd(0x4E, 0x00);
-  epd_cmd(0x4F, 0xC7, 0x00);
 
   uint8_t side;
   flash_read(FILE_ADDR___cards_bin + card_id * 13001 + 10000, &side, 1);
@@ -1083,32 +1092,24 @@ if (1) {
   // Colour
   flash_read_xor(FILE_ADDR___cards_bin + card_id * 13001 + 10001, pixels + offs, 200 * 40 / 8);
   // "Previous image" buffer; hence inverted for the name region
-  _epd_cmd(0x26, pixels, sizeof pixels);
+  epd_write_ram_prev(pixels);
 
   // Xor by alpha mask
   flash_read_xor(FILE_ADDR___cards_bin + card_id * 13001 + 11001, pixels + offs, 200 * 40 / 8);
   // Write pixel data
-  _epd_cmd(0x24, pixels, sizeof pixels);
-  // Display
-  epd_cmd(0x22, 0xCF);  // DISPLAY with DISPLAY Mode 2
-  epd_cmd(0x20);
-  epd_waitbusy();
+  epd_write_ram(pixels);
+  epd_display(true);
   // Deep sleep
   epd_cmd(0x10, 0x01);
 
   // Clear blue LED lit up in the EXTI interrupt handler
   TIM14->CCR1 = TIM3->CCR1 = TIM17->CCR1 = 0;
+  spin_delay(4000);
 
   sleep_wait_button();
 
   // XXX: DRY!
   epd_reset(true, false);
-  // Set RAM X-address Start / End position
-  epd_cmd(0x44, 0x00, 0x18);  // 0x18 = 200 / 8 - 1
-  epd_cmd(0x45, 0xC7, 0x00, 0x00, 0x00);  // 0xC7 = 200 - 1
-  // Set starting RAM location
-  epd_cmd(0x4E, 0x00);
-  epd_cmd(0x4F, 0xC7, 0x00);
   // Revert to non-power-save mode
   // XXX: Why is this required??
   // Display Update Control 2
@@ -1127,11 +1128,8 @@ if (1) {
   flash_read_set(FILE_ADDR___cards_bin + card_id * 13001 + 11001, pixels + offs, 200 * 40 / 8);
   // Colour
   flash_read_xor(FILE_ADDR___cards_bin + card_id * 13001 + 10001, pixels + offs, 200 * 40 / 8);
-  _epd_cmd(0x24, pixels, sizeof pixels);
-  // Display
-  epd_cmd(0x22, 0xCF);  // DISPLAY with DISPLAY Mode 2
-  epd_cmd(0x20);
-  epd_waitbusy();
+  epd_write_ram(pixels);
+  epd_display(true);
 
   // Print text
   uint16_t cmt_text[40];
@@ -1149,11 +1147,13 @@ if (1) {
   voltage_str[4] = '0' + vri_mV % 10;
   print_string(pixels, voltage_str, 88, 3);
 
-  _epd_cmd(0x24, pixels, sizeof pixels);
-  // Display
-  epd_cmd(0x22, 0xCF);  // DISPLAY with DISPLAY Mode 2
-  epd_cmd(0x20);
-  epd_waitbusy();
+  uint16_t n_rounds_str[] = {' ', ' ', ' ', ' ', ' ', ' ', 'r', 'o', 'u', 'n', 'd', 's', '\0'};
+  for (int i = 4; i >= 0 && n_rounds > 0; i--, n_rounds /= 10)
+    n_rounds_str[i] = '0' + n_rounds % 10;
+  print_string(pixels, n_rounds_str, 102, 3);
+
+  epd_write_ram(pixels);
+  epd_display(true);
   // Deep sleep
   epd_cmd(0x10, 0x03);
 
