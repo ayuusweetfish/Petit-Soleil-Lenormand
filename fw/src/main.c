@@ -601,118 +601,18 @@ static inline void entropy_clocks(uint32_t *_s, int n)
   // while (1) { }
 }
 
-static inline void mix_init(uint32_t key[8])
-{
-  // twofish_set_key(key, 256);
-}
-
-/*
-// Threefish block cipher, with keys
-static inline void mix(uint32_t *pool, int n)
-{
-  // Skein paper: https://www.schneier.com/wp-content/uploads/2015/01/skein.pdf
-  // Table 4
-  static const int r[8][4] = {
-    // 256-bit (4-word) variant
-    // {14, 16}, {52, 57}, {23, 40}, { 5, 37},
-    // {25, 33}, {46, 12}, {58, 22}, {32, 32},
-    // 512-bit (8-word) variant
-    {46, 36, 19, 37},
-    {33, 27, 14, 42},
-    {17, 49, 36, 39},
-    {44,  9, 54, 56},
-    {39, 30, 34, 24},
-    {13, 50, 10, 17},
-    {25, 29, 39, 43},
-    { 8, 35, 56, 22},
-  };
-  // Table 3
-  static const int p[8] = {
-    2, 1, 4, 7, 6, 5, 0, 3,
-  }
-  for (int i = 0; i < n; i += 16) {
-    uint64_t *block = (uint64_t *)(pool + i);
-  }
-}
-*/
-
-/*
-// Keccak-f[400]
-// https://keccak.team/files/Keccak-reference-3.0.pdf
-static inline void keccak_f(void *state) {
-  #define rol(x, s) (((x) << (s)) | ((x) >> (16 - (s))))
-  // Triangular numbers
-  // print(''.join(['%2d, ' % ((i+1)*(i+2)/2 % 16) + ('\n' if i % 6 == 5 else '') for i in range(24)]))
-  static const uint8_t rho[24] = \
-    { 1,  3,  6, 10, 15,  5,
-     12,  4, 13,  7,  2, 14,
-     11,  9,  8,  8,  9, 11,
-     14,  2,  7, 13,  4, 12};
-  static const uint8_t pi[24] = \
-    {10,  7, 11, 17, 18,  3,
-      5, 16,  8, 21, 24,  4,
-     15, 23, 19, 13, 12,  2,
-     20, 14, 22,  9,  6,  1};
-  static const uint16_t RC[24] = \
-    {0x0001, 0x8082, 0x808A,
-     0x8000, 0x808B, 0x0001,
-     0x8081, 0x8009, 0x008A,
-     0x0088, 0x8009, 0x000A,
-     0x808B, 0x008B, 0x8089,
-     0x8003, 0x8002, 0x0080,
-     0x800A, 0x000A, 0x8081,
-     0x8080, 0x0001, 0x8008};
-
-  uint16_t *a = (uint16_t *)state;
-  uint16_t b[5] = {0};
-
-  for (int i = 12; i < 24; i++) {
-    // Theta
-    for (int x = 0; x < 5; x++) {
-      b[x] = 0;
-      for (int y = 0; y < 25; y += 5)
-        b[x] ^= a[x + y];
-    }
-    for (int x = 0; x < 5; x++) {
-      for (int y = 0; y < 25; y += 5)
-        a[y + x] ^= b[(x + 4) % 5] ^ rol(b[(x + 1) % 5], 1);
-    }
-    // Rho and pi
-    uint16_t t = a[1];
-    for (int x = 0; x < 24; x++) {
-      b[0] = a[pi[x]];
-      a[pi[x]] = rol(t, rho[x]);
-      t = b[0];
-    }
-    // Chi
-    for (int y = 0; y < 25; y += 5) {
-      for (int x = 0; x < 5; x++)
-        b[x] = a[y + x];
-      for (int x = 0; x < 5; x++)
-        a[y + x] = b[x] ^ ((~b[(x + 1) % 5]) & b[(x + 2) % 5]);
-    }
-    // Iota
-    a[0] ^= RC[i];
-  }
-}
-*/
-
 static inline void mix(uint32_t *pool, uint32_t n, uint32_t n_round)
 {
-  // swv_printf("Before (round %u)\n", n_round);
-  // for (int i = 0; i < n; i++) swv_printf("%08x%c", pool[i], i % 10 == 9 ? '\n' : ' ');
-
-  // keccak_f(pool);
   static const uint32_t xoodoo_rc[12] = {
     0x00000058, 0x00000038, 0x000003C0, 0x000000D0,
     0x00000120, 0x00000014, 0x00000060, 0x0000002C,
     0x00000380, 0x000000F0, 0x000001A0, 0x00000012,
   };
-  xoodoo(pool, xoodoo_rc[n_round % 12]);
-  xoodoo(pool + (n - 12), xoodoo_rc[n_round % 12]);
-
-  // swv_printf("After\n");
-  // for (uint32_t i = 0; i < n; i++) swv_printf("%08x%c", pool[i], i % 10 == 9 ? '\n' : ' ');
+  for (int i = 0; i < 3; i++) {
+    uint32_t rc = xoodoo_rc[(n_round % 4) * 3 + i];
+    xoodoo(pool, rc);
+    xoodoo(pool + (n - 12), rc);
+  }
 }
 
 static int draw_card(const uint32_t *pool, const size_t len)
@@ -1103,7 +1003,6 @@ if (0) {
     adc_vrefint,
     adc_vri,
   };
-  mix_init(pool + 3);
 
 while (0) {
   uint32_t t0 = HAL_GetTick();
@@ -1123,10 +1022,10 @@ while (0) {
 
   // ======== Accumulate entropy while the magical lights flash! ========
   uint32_t n_rounds = 0;
+  uint32_t time_spent = 0;
   int btn_released = 10;
   uint32_t btn_released_at = 0;
   uint32_t last_sample = (uint32_t)-100;
-  // uint32_t samples_t0[40] = { 0 }, samples_t[40] = { 0 };
   while (btn_released > 0 || HAL_GetTick() - btn_released_at < 2000) {
     if (btn_released > 0) {
       if (HAL_GPIO_ReadPin(GPIOA, PIN_BUTTON) == 1) {
@@ -1142,12 +1041,12 @@ while (0) {
         magical_intensity = 65536 / 8 * (2000 - t) / 500 * (2000 - t) / 500;
     }
     if (HAL_GetTick() - last_sample >= 100) {
-      // samples_t0[n_rounds] = HAL_GetTick();
+      uint32_t t0 = HAL_GetTick();
       entropy_adc(pool, 20);
       entropy_clocks(pool, 20);
       mix(pool, 20, ++n_rounds);
       last_sample += 100;
-      // samples_t[n_rounds - 1] = last_sample;
+      time_spent += (HAL_GetTick() - t0);
     }
     sleep_delay(1);
   }
@@ -1256,10 +1155,17 @@ if (stage == 0 || stage == 3) {
   voltage_str[4] = '0' + vri_mV % 10;
   print_string(pixels, voltage_str, 88, 3);
 
+  time_spent /= n_rounds;
+
   uint16_t n_rounds_str[] = {' ', ' ', ' ', ' ', ' ', ' ', 'r', 'o', 'u', 'n', 'd', 's', '\0'};
   for (int i = 4; i >= 0 && n_rounds > 0; i--, n_rounds /= 10)
     n_rounds_str[i] = '0' + n_rounds % 10;
-  print_string(pixels, n_rounds_str, 102, 3);
+  print_string(pixels, n_rounds_str, 105, 3);
+
+  uint16_t time_str[] = {' ', ' ', ' ', ' ', ' ', ' ', 'm', 's', '\0'};
+  for (int i = 4; i >= 0 && time_spent > 0; i--, time_spent /= 10)
+    time_str[i] = '0' + time_spent % 10;
+  print_string(pixels, time_str, 122, 3);
 
   for (int i = 0; i < 200 * 200 / 8; i++) pixels[i] ^= 0xff;
   epd_write_ram_prev(pixels);

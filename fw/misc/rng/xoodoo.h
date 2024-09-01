@@ -1,5 +1,6 @@
 #pragma once
 
+// https://eprint.iacr.org/2018/767.pdf
 // https://github.com/XKCP/XKCP/blob/ade40f8/lib/low/Xoodoo/plain/Xoodoo-optimized.c
 
 #define ROTL32(_x, _n) (((_x) << (_n)) | ((_x) >> (32 - (_n))))
