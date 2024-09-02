@@ -56,9 +56,9 @@ TIM_HandleTypeDef tim3, tim14, tim16, tim17;
 RTC_HandleTypeDef rtc;
 
 static volatile bool stopped = false;
-static volatile bool btn_active = false;
+static volatile bool btn_active = true; // Assume the button is pressed on boot
 static volatile uint32_t btn_entropy = 0;
-static uint32_t magical_intensity = 65536 / 8;
+static uint32_t magical_intensity = 0;
 
 #pragma GCC push_options
 #pragma GCC optimize("O3")
@@ -850,8 +850,12 @@ int main()
 
   btn_active = !(GPIOA->IDR & PIN_BUTTON);
 
-void stop_wait_button()
+uint32_t stop_wait_button(uint32_t limit)
 {
+  // Clear blue LED lit up in the EXTI interrupt handler
+  // TIM14->CCR1 = TIM3->CCR1 = TIM17->CCR1 = 0;
+  // spin_delay(4000);
+
 if (0) {
   while (HAL_GPIO_ReadPin(GPIOA, PIN_BUTTON) == 1) sleep_delay(10);
 } else {
@@ -861,18 +865,26 @@ if (0) {
   __HAL_RTC_WAKEUPTIMER_CLEAR_FLAG(&rtc, RTC_FLAG_WUTF);
   // 8000 = 4 s / (16 / (32 kHz))
   // 240000 = 120 s / (16 / (32 kHz))
-  HAL_RTCEx_SetWakeUpTimer_IT(&rtc, 240000, RTC_WAKEUPCLOCK_RTCCLK_DIV16);
+  HAL_RTCEx_SetWakeUpTimer_IT(&rtc, 24000, RTC_WAKEUPCLOCK_RTCCLK_DIV16);
 
   EXTI->RTSR1 &= ~EXTI_LINE_BUTTON; // Disable rising trigger
   stopped = true;
 
   HAL_PWR_EnterSTOPMode(PWR_LOWPOWERREGULATOR_ON, PWR_STOPENTRY_WFI);
 
-  EXTI->RTSR1 |= ~EXTI_LINE_BUTTON; // Enable rising trigger
+  EXTI->RTSR1 |=  EXTI_LINE_BUTTON; // Enable rising trigger
 
   HAL_RTCEx_DeactivateWakeUpTimer(&rtc);
 
   HAL_ResumeTick();
+
+  btn_active = true;
+  uint32_t t0 = HAL_GetTick();
+  while (btn_active) {
+    if (HAL_GetTick() - t0 >= limit) return limit;
+    sleep_delay(1);
+  }
+  return HAL_GetTick() - t0;
 }
 }
 
@@ -1066,6 +1078,12 @@ while (0) {
   uint32_t t2 = HAL_GetTick();
   swv_printf("%u %u\n", t1 - t0, t2 - t1);  // 8~9 12~14
 }
+
+redraw:
+  magical_intensity = 65536 / 8;
+  // HAL_NVIC_EnableIRQ(TIM3_IRQn);
+  __HAL_RCC_TIM3_CLK_ENABLE();
+
   entropy_adc(pool, 20);
   entropy_clocks(pool, 20);
   // entropy_clocks_stop();
@@ -1102,7 +1120,7 @@ while (0) {
 
   // swv_printf("%d\n", samples_t0[n_rounds - 1], samples_t[n_rounds - 1]);
 
-  HAL_NVIC_DisableIRQ(TIM3_IRQn);
+  // HAL_NVIC_DisableIRQ(TIM3_IRQn);
   TIM14->CCR1 = TIM3->CCR1 = TIM17->CCR1 = 0;
   spin_delay(4000);
   __HAL_RCC_TIM3_CLK_DISABLE();
@@ -1238,10 +1256,11 @@ if (stage == 0 || stage == 3) {
       TIM17->CCR1 = 0; sleep_delay(100);
     }
 
-    // Clear blue LED lit up in the EXTI interrupt handler
-    TIM14->CCR1 = TIM3->CCR1 = TIM17->CCR1 = 0;
-    spin_delay(4000);
-    stop_wait_button();
+    uint32_t press_len = 0;
+    do press_len = stop_wait_button(1000); while (press_len < 50);
+    if (press_len == 1000) {
+      goto redraw;
+    }
   }
 
   display_image(1);
@@ -1256,6 +1275,17 @@ void SysTick_Handler()
 {
   HAL_IncTick();
   HAL_SYSTICK_IRQHandler();
+
+  static uint32_t debounce = 0;
+  uint32_t btn_state = !(GPIOA->IDR & PIN_BUTTON);
+  if (btn_active != btn_state) {
+    if (++debounce == 5) {
+      btn_active = btn_state;
+      debounce = 0;
+    }
+  } else {
+    debounce = 0;
+  }
 }
 
 void EXTI2_3_IRQHandler()
@@ -1263,9 +1293,8 @@ void EXTI2_3_IRQHandler()
   if (stopped) {
     setup_clocks();
     stopped = false;
-    TIM14->CCR1 = 2000; // Display blue
+    // TIM14->CCR1 = 2000; // Display blue
   }
-  btn_active = !(GPIOA->IDR & PIN_BUTTON);
 #define rotl32(_x, _n) (((_x) << (_n)) | ((_x) >> (32 - (_n))))
   btn_entropy = rotl32(btn_entropy, 28) + ((TIM3->CNT << 16) | TIM16->CNT);
   __HAL_GPIO_EXTI_CLEAR_IT(PIN_BUTTON); // Clears both rising and falling signals
@@ -1274,7 +1303,7 @@ void EXTI2_3_IRQHandler()
 void TIM3_IRQHandler()
 {
   // Clear interrupt flag
-  TIM3->SR &= ~TIM_FLAG_UPDATE;
+  TIM3->SR = ~TIM_FLAG_UPDATE;
 
 /*
 from math import *
@@ -1298,14 +1327,14 @@ void RTC_TAMP_IRQHandler()
     __HAL_RTC_WAKEUPTIMER_CLEAR_FLAG(&rtc, RTC_FLAG_WUTF);
   else return;
 
-  HAL_GPIO_WritePin(GPIOA, PIN_PWR_LATCH, 0);
   HAL_GPIO_Init(GPIOB, &(GPIO_InitTypeDef){
     .Pin = PIN_LED_R,
     .Mode = GPIO_MODE_OUTPUT_PP,
   });
-  while (1) {
+  for (int i = 0; ; i++) {
     GPIOB->BSRR = PIN_LED_R <<  0; spin_delay(16000 * 40);
     GPIOB->BSRR = PIN_LED_R << 16; spin_delay(16000 * 40);
+    if (i == 3) HAL_GPIO_WritePin(GPIOA, PIN_PWR_LATCH, 0);
   }
 }
 
