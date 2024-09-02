@@ -965,20 +965,23 @@ if (0) {
   adc1.Init.TriggerFrequencyMode = ADC_TRIGGER_FREQ_LOW;
   HAL_ADC_Init(&adc1);
 
-  ADC_ChannelConfTypeDef adc_ch13;
-  adc_ch13.Channel = ADC_CHANNEL_VREFINT;
-  adc_ch13.Rank = ADC_REGULAR_RANK_1;
-  adc_ch13.SamplingTime = ADC_SAMPLETIME_79CYCLES_5; // Stablize
-  HAL_ADC_ConfigChannel(&adc1, &adc_ch13);
-
   HAL_ADCEx_Calibration_Start(&adc1);
 
   // Wait some time for the voltage to recover?
   sleep_delay(2);
 
+  uint32_t adc_vrefint, adc_vri, vri_mV;
+
+void sense_vri()
+{
+  ADC_ChannelConfTypeDef adc_ch13;
+  adc_ch13.Channel = ADC_CHANNEL_VREFINT;
+  adc_ch13.Rank = ADC_REGULAR_RANK_1;
+  adc_ch13.SamplingTime = ADC_SAMPLETIME_79CYCLES_5; // Stablize
+  HAL_ADC_ConfigChannel(&adc1, &adc_ch13);
   HAL_ADC_Start(&adc1);
   HAL_ADC_PollForConversion(&adc1, 1000);
-  uint32_t adc_vrefint = HAL_ADC_GetValue(&adc1);
+  adc_vrefint = HAL_ADC_GetValue(&adc1);
   HAL_ADC_Stop(&adc1);
   // swv_printf("ADC VREFINT cal = %lu\n", *VREFINT_CAL_ADDR);
   // swv_printf("ADC VREFINT = %lu\n", adc_vrefint);
@@ -991,14 +994,16 @@ if (0) {
   HAL_ADC_ConfigChannel(&adc1, &adc_ch0);
   HAL_ADC_Start(&adc1);
   HAL_ADC_PollForConversion(&adc1, 1000);
-  uint32_t adc_vri = HAL_ADC_GetValue(&adc1);
+  adc_vri = HAL_ADC_GetValue(&adc1);
   HAL_ADC_Stop(&adc1);
   // swv_printf("ADC VRI = %lu\n", adc_vri);
   // VREFINT cal = 1656, VREFINT read = 1542, VRI read = 3813
   // -> VRI = 3813/4095 * (1656/1542 * 3 V) = 3.00 V
 
-  uint32_t vri_mV = (uint32_t)(3000ULL * adc_vri * (*VREFINT_CAL_ADDR) / (4095 * adc_vrefint));
+  vri_mV = (uint32_t)(3000ULL * adc_vri * (*VREFINT_CAL_ADDR) / (4095 * adc_vrefint));
   // swv_printf("VRI = %lu mV\n", vri_mV);
+}
+  sense_vri();
 
   // ======== SPI ========
   // GPIO ports
@@ -1267,7 +1272,7 @@ if (stage == 0 || stage == 3) {
 }
 }
 
-  for (int i = 0; i <= 3; i++) {
+  for (int i = 0; ; i = (i == 3 ? 1 : i + 1)) {
     display_image(i);
     // Blink green
     for (int i = 0; i < 1; i++) {
@@ -1278,11 +1283,10 @@ if (stage == 0 || stage == 3) {
     uint32_t press_len = 0;
     do press_len = stop_wait_button(1000); while (press_len < 50);
     if (press_len == 1000) {
+      sense_vri();
       goto redraw;
     }
   }
-
-  display_image(1);
 
   HAL_GPIO_WritePin(GPIOA, PIN_PWR_LATCH, 0);
   HAL_SuspendTick();
