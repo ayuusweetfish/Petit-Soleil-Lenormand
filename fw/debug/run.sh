@@ -13,6 +13,9 @@ elif [ "$1" == "s" ]; then  # serve
 elif [ "$1" == "d" ]; then  # disassembly
   ~/.platformio/packages/toolchain-gccarmnoneeabi/bin/arm-none-eabi-objdump -S -d .pio/build/dev/firmware.elf
   exit
+elif [ "$1" == "z" ]; then  # size
+  ~/.platformio/packages/toolchain-gccarmnoneeabi/bin/arm-none-eabi-nm  --print-size --size-sort --radix=d .pio/build/dev/firmware.elf
+  exit
 fi
 
 cat >debug/gdbinit <<EOF
@@ -27,7 +30,6 @@ commands
   printf "%s\n", swv_buf
   c
 end
-r
 EOF
 
 ~/.platformio/packages/toolchain-gccarmnoneeabi/bin/arm-none-eabi-gdb .pio/build/dev/firmware.elf -x debug/gdbinit

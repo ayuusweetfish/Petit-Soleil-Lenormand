@@ -859,8 +859,9 @@ if (0) {
 
   __HAL_PWR_CLEAR_FLAG(PWR_FLAG_WUF);
   __HAL_RTC_WAKEUPTIMER_CLEAR_FLAG(&rtc, RTC_FLAG_WUTF);
-  // 4000 = 2 s / (16 / (32 kHz))
-  // HAL_RTCEx_SetWakeUpTimer_IT(&rtc, 4000, RTC_WAKEUPCLOCK_RTCCLK_DIV16);
+  // 8000 = 4 s / (16 / (32 kHz))
+  // 240000 = 120 s / (16 / (32 kHz))
+  HAL_RTCEx_SetWakeUpTimer_IT(&rtc, 240000, RTC_WAKEUPCLOCK_RTCCLK_DIV16);
 
   EXTI->RTSR1 &= ~EXTI_LINE_BUTTON; // Disable rising trigger
   stopped = true;
@@ -869,7 +870,7 @@ if (0) {
 
   EXTI->RTSR1 |= ~EXTI_LINE_BUTTON; // Enable rising trigger
 
-  // HAL_RTCEx_DeactivateWakeUpTimer(&rtc);
+  HAL_RTCEx_DeactivateWakeUpTimer(&rtc);
 
   HAL_ResumeTick();
 }
@@ -880,10 +881,13 @@ if (0) {
   __HAL_RCC_PWR_CLK_ENABLE();
   __HAL_RCC_RTCAPB_CLK_ENABLE();
   HAL_PWR_EnableBkUpAccess();
+  __HAL_RCC_RTC_CONFIG(RCC_RTCCLKSOURCE_LSI);
+/*
   HAL_RCCEx_PeriphCLKConfig(&(RCC_PeriphCLKInitTypeDef){
     .PeriphClockSelection = RCC_PERIPHCLK_RTC,
     .RTCClockSelection = RCC_RTCCLKSOURCE_LSI,
   });
+*/
   rtc = (RTC_HandleTypeDef){
     .Instance = RTC,
     .Init = (RTC_InitTypeDef){
@@ -898,7 +902,13 @@ if (0) {
     },
   };
   HAL_RTC_Init(&rtc);
-  // __HAL_RCC_RTC_CONFIG(RCC_RTCCLKSOURCE_LSI);
+
+  HAL_RTCEx_DeactivateWakeUpTimer(&rtc); // Prevent extraneous interrupts during debug
+  __HAL_PWR_CLEAR_FLAG(PWR_FLAG_WUF);
+  __HAL_RTC_WAKEUPTIMER_CLEAR_FLAG(&rtc, RTC_FLAG_WUTF);
+  HAL_NVIC_SetPriority(RTC_TAMP_IRQn, 1, 1);
+  HAL_NVIC_EnableIRQ(RTC_TAMP_IRQn);
+
   __HAL_RCC_RTC_ENABLE();
 
   // ======== ADC ========
@@ -1286,6 +1296,17 @@ void RTC_TAMP_IRQHandler()
 {
   if (__HAL_RTC_WAKEUPTIMER_GET_FLAG(&rtc, RTC_FLAG_WUTF))
     __HAL_RTC_WAKEUPTIMER_CLEAR_FLAG(&rtc, RTC_FLAG_WUTF);
+  else return;
+
+  HAL_GPIO_WritePin(GPIOA, PIN_PWR_LATCH, 0);
+  HAL_GPIO_Init(GPIOB, &(GPIO_InitTypeDef){
+    .Pin = PIN_LED_R,
+    .Mode = GPIO_MODE_OUTPUT_PP,
+  });
+  while (1) {
+    GPIOB->BSRR = PIN_LED_R <<  0; spin_delay(16000 * 40);
+    GPIOB->BSRR = PIN_LED_R << 16; spin_delay(16000 * 40);
+  }
 }
 
 void NMI_Handler() { while (1) { } }
