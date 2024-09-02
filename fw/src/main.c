@@ -845,6 +845,7 @@ int main()
   HAL_EXTI_SetConfigLine(&exti_handle, &exti_cfg);
 
   // Interrupt
+  magical_intensity = 65536 / 8;
   HAL_NVIC_SetPriority(EXTI2_3_IRQn, 1, 0);
   HAL_NVIC_EnableIRQ(EXTI2_3_IRQn);
 
@@ -859,17 +860,21 @@ uint32_t stop_wait_button(uint32_t limit)
 if (0) {
   while (HAL_GPIO_ReadPin(GPIOA, PIN_BUTTON) == 1) sleep_delay(10);
 } else {
-  HAL_SuspendTick();
+  // HAL_SuspendTick();
 
   __HAL_PWR_CLEAR_FLAG(PWR_FLAG_WUF);
   __HAL_RTC_WAKEUPTIMER_CLEAR_FLAG(&rtc, RTC_FLAG_WUTF);
-  // 8000 = 4 s / (16 / (32 kHz))
-  // 240000 = 120 s / (16 / (32 kHz))
-  HAL_RTCEx_SetWakeUpTimer_IT(&rtc, 24000, RTC_WAKEUPCLOCK_RTCCLK_DIV16);
+  // 8000 = 4 s * (32 kHz / 16)
+  // HAL_RTCEx_SetWakeUpTimer_IT(&rtc, 8000, RTC_WAKEUPCLOCK_RTCCLK_DIV16);
+  // 117 = 120 s * (32 kHz / (0x7F + 1) * (0xFF + 1))
+  HAL_RTCEx_SetWakeUpTimer_IT(&rtc, 117, RTC_WAKEUPCLOCK_CK_SPRE_16BITS);
 
   EXTI->RTSR1 &= ~EXTI_LINE_BUTTON; // Disable rising trigger
   stopped = true;
 
+  // while (1) { }
+  // RTC: x/24xw 0x40002800
+  // RCC: x/25xw 0x40021000 (RM0454 Rev 5 Table 28 misses bits in RCC_APBENR1 including RTCAPBEN)
   HAL_PWR_EnterSTOPMode(PWR_LOWPOWERREGULATOR_ON, PWR_STOPENTRY_WFI);
 
   EXTI->RTSR1 |=  EXTI_LINE_BUTTON; // Enable rising trigger
@@ -888,24 +893,40 @@ if (0) {
 }
 }
 
+  setup_clocks();
+
   // ======== RTC ========
   // https://community.st.com/t5/stm32-mcus-embedded-software/stm32g071rb-rtc-init-bug/m-p/331272/highlight/true#M23692
+  // https://community.st.com/t5/stm32-mcus-products/stm32g030-can-t-setup-rtc-hal-rtc-init-always-return-hal-timeout/td-p/692500
+  // https://stackoverflow.com/q/43210417
+  // When HAL_RTC_Init() returns HAL_TIMEOUT,
+  // wake-up interrupt by RTCCLK/16 (RTC_WAKEUPCLOCK_RTCCLK_DIV16) might still work
+  // but ck_spre (RTC_WAKEUPCLOCK_CK_SPRE_16BITS)
   __HAL_RCC_PWR_CLK_ENABLE();
   __HAL_RCC_RTCAPB_CLK_ENABLE();
   HAL_PWR_EnableBkUpAccess();
+
+  // Backup domain reset
+  // Needs to be issued after backup domain unlock: http://www.efton.sk/STM32/gotcha/g62.html
+  RCC->BDCR |=  RCC_BDCR_BDRST; spin_delay(1000);
+  RCC->BDCR &= ~RCC_BDCR_BDRST; spin_delay(1000);
+
   __HAL_RCC_RTC_CONFIG(RCC_RTCCLKSOURCE_LSI);
 /*
+  // Equivalent:
   HAL_RCCEx_PeriphCLKConfig(&(RCC_PeriphCLKInitTypeDef){
     .PeriphClockSelection = RCC_PERIPHCLK_RTC,
     .RTCClockSelection = RCC_RTCCLKSOURCE_LSI,
   });
 */
+  __HAL_RCC_RTC_ENABLE(); // Put before `HAL_RTC_Init()`!
+
   rtc = (RTC_HandleTypeDef){
     .Instance = RTC,
     .Init = (RTC_InitTypeDef){
       .HourFormat = RTC_HOURFORMAT_24,
-      .AsynchPrediv = 0x00,
-      .SynchPrediv = 0x00,
+      .AsynchPrediv = 0x7F,
+      .SynchPrediv = 0xFF,
       .OutPut = RTC_OUTPUT_WAKEUP,
       .OutPutRemap = RTC_OUTPUT_REMAP_NONE,
       .OutPutPolarity = RTC_OUTPUT_POLARITY_HIGH,
@@ -920,8 +941,6 @@ if (0) {
   __HAL_RTC_WAKEUPTIMER_CLEAR_FLAG(&rtc, RTC_FLAG_WUTF);
   HAL_NVIC_SetPriority(RTC_TAMP_IRQn, 1, 1);
   HAL_NVIC_EnableIRQ(RTC_TAMP_IRQn);
-
-  __HAL_RCC_RTC_ENABLE();
 
   // ======== ADC ========
   gpio_init.Pin = GPIO_PIN_0;
@@ -1096,7 +1115,7 @@ redraw:
   uint32_t btn_released_at = 0;
   uint32_t n_rounds = 0;
   uint32_t time_spent = 0;
-  uint32_t last_sample = (uint32_t)-100;
+  uint32_t last_sample = HAL_GetTick() - 100;
   while (btn_released_at == 0 || HAL_GetTick() - btn_released_at < 2000) {
     if (btn_released_at == 0) {
       if (!btn_active) btn_released_at = HAL_GetTick();
