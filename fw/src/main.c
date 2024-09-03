@@ -88,8 +88,8 @@ static inline void _epd_cmd(uint8_t cmd, const uint8_t *params, size_t params_si
   HAL_GPIO_WritePin(GPIOA, PIN_EP_NCS, GPIO_PIN_RESET);
   HAL_GPIO_WritePin(GPIOA, PIN_EP_DCC, GPIO_PIN_RESET);
   spi_transmit(&cmd, 1);
+  HAL_GPIO_WritePin(GPIOA, PIN_EP_DCC, GPIO_PIN_SET);
   if (params_size > 0) {
-    HAL_GPIO_WritePin(GPIOA, PIN_EP_DCC, GPIO_PIN_SET);
     spi_transmit(params, params_size);
   }
   HAL_GPIO_WritePin(GPIOA, PIN_EP_NCS, GPIO_PIN_SET);
@@ -211,11 +211,15 @@ static void epd_set_grey()
 static void epd_write_ram(const uint8_t *pixels)
 {
   _epd_cmd(0x24, pixels, 200 * 200 / 8);
+  // XXX: Discard further data. This makes a difference in the cases where
+  // soldering defects results in EPD_NCS always grounded (?!)
+  epd_cmd(0x7f);
 }
 
 static void epd_write_ram_prev(const uint8_t *pixels)
 {
   _epd_cmd(0x26, pixels, 200 * 200 / 8);
+  epd_cmd(0x7f);
 }
 
 static void epd_display(bool partial)
@@ -589,6 +593,7 @@ static inline void entropy_clocks_stop()
   });
 }
 
+#pragma GCC push_options
 #pragma GCC optimize("O3")
 static inline void entropy_clocks(uint32_t *_s, int n)
 {
@@ -666,6 +671,7 @@ void setup_clocks()
 
   entropy_clocks_start();
 }
+#pragma GCC pop_options
 
 int main()
 {
@@ -718,6 +724,46 @@ int main()
   // ======== Clocks ========
   setup_clocks();
   HAL_NVIC_SetPriority(SysTick_IRQn, 0, 0);
+
+/*
+  // GPIO self-check
+  struct {
+    GPIO_TypeDef *port;
+    uint32_t pin;
+  } pins[] = {
+    {GPIOA, GPIO_PIN_1},
+    {GPIOA, GPIO_PIN_4},
+    {GPIOA, GPIO_PIN_5},
+    {GPIOA, GPIO_PIN_6},
+    {GPIOA, GPIO_PIN_7},
+  };
+  HAL_GPIO_Init(GPIOA, &(GPIO_InitTypeDef){
+    .Pin = 0b0001100011111111,
+    .Mode = GPIO_MODE_INPUT,
+    .Pull = GPIO_PULLUP,
+  });
+  for (int i = 0; i < sizeof pins / sizeof pins[0]; i++) {
+    HAL_GPIO_Init(pins[i].port, &(GPIO_InitTypeDef){
+      .Pin = pins[i].pin,
+      .Mode = GPIO_MODE_OUTPUT_PP,
+      .Pull = GPIO_NOPULL,
+    });
+    pins[i].port->BSRR = pins[i].pin << 16;
+    spin_delay(100000);
+    uint32_t idr0 = pins[i].port->IDR;
+    pins[i].port->BSRR = pins[i].pin <<  0;
+    spin_delay(100000);
+    uint32_t idr1 = pins[i].port->IDR;
+    HAL_GPIO_Init(pins[i].port, &(GPIO_InitTypeDef){
+      .Pin = pins[i].pin,
+      .Mode = GPIO_MODE_INPUT,
+      .Pull = GPIO_PULLUP,
+    });
+    swv_printf("%d %08x %08x\n", i, idr0, idr1);
+  }
+
+  while (1) sleep_delay(1);
+*/
 
   // Start the lights as soon as possible
   // ======== TIM3, used during ADC entropy accumulation and magical lights ========
@@ -858,7 +904,9 @@ uint32_t stop_wait_button(uint32_t limit)
   // spin_delay(4000);
 
 if (0) {
+  uint32_t t0 = HAL_GetTick();
   while (HAL_GPIO_ReadPin(GPIOA, PIN_BUTTON) == 1) sleep_delay(10);
+  return HAL_GetTick() - t0;
 } else {
   // HAL_SuspendTick();
 
@@ -1027,6 +1075,7 @@ void sense_vri()
   gpio_init.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOA, &gpio_init);
   HAL_GPIO_WritePin(GPIOA, PIN_EP_NCS, 1);
+  // while (HAL_GPIO_ReadPin(GPIOA, PIN_EP_NCS) == 0) { }
   HAL_GPIO_WritePin(GPIOA, PIN_EP_DCC, 0);
   HAL_GPIO_WritePin(GPIOA, PIN_EP_NRST, 0);
   // Input EP_BUSY (PA12)
