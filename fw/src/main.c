@@ -480,14 +480,35 @@ static inline void spin_delay(uint32_t cycles)
 // Also mixes in TIM3, if it is enabled
 static inline void entropy_adc(uint32_t *out_v, int n)
 {
-/*
   HAL_GPIO_Init(GPIOA, &(GPIO_InitTypeDef){
-    .Pin = GPIO_PIN_12,
+    .Pin = GPIO_PIN_13,
     .Mode = GPIO_MODE_ANALOG,
     .Pull = GPIO_NOPULL,
     .Speed = GPIO_SPEED_FREQ_HIGH,
   });
-*/
+
+  ADC_ChannelConfTypeDef adc_ch17;
+  adc_ch17.Channel = ADC_CHANNEL_17;
+  adc_ch17.Rank = ADC_REGULAR_RANK_1;
+  adc_ch17.SamplingTime = ADC_SAMPLETIME_1CYCLE_5;
+
+  HAL_ADC_ConfigChannel(&adc1, &adc_ch17);
+  for (int i = 0; i < n; i++) {
+    HAL_ADC_Start(&adc1);
+    HAL_ADC_PollForConversion(&adc1, 1000);
+    out_v[i] = HAL_ADC_GetValue(&adc1);
+    HAL_ADC_Stop(&adc1);
+  }
+
+  HAL_GPIO_Init(GPIOA, &(GPIO_InitTypeDef){
+    .Pin = GPIO_PIN_13,
+    .Mode = GPIO_MODE_AF_PP,
+    .Alternate = GPIO_AF0_SWJ,
+    .Pull = GPIO_PULLUP,
+    .Speed = GPIO_SPEED_FREQ_HIGH,
+  });
+  return;
+
   ADC_ChannelConfTypeDef adc_ch13;
   adc_ch13.Channel = ADC_CHANNEL_VREFINT;
   adc_ch13.Rank = ADC_REGULAR_RANK_1;
@@ -1145,16 +1166,14 @@ while (0) {
 
 redraw:
   magical_intensity = 65536 / 8;
-  // HAL_NVIC_EnableIRQ(TIM3_IRQn);
   __HAL_RCC_TIM3_CLK_ENABLE();
 
   entropy_adc(pool, 20);
-  entropy_clocks(pool, 20);
-  // entropy_clocks_stop();
+  // entropy_clocks(pool, 20);
+  entropy_clocks_stop();
   mix(pool, 20, 0);
 
   // swv_printf("tick = %u\n", HAL_GetTick()); // tick = 7
-  // while (HAL_GPIO_ReadPin(GPIOA, PIN_BUTTON) == 0) { }
 
   // ======== Accumulate entropy while the magical lights flash! ========
   uint32_t btn_released_at = 0;
@@ -1182,9 +1201,6 @@ redraw:
   }
   uint32_t btn_entropy_copy = btn_entropy;
 
-  // swv_printf("%d\n", samples_t0[n_rounds - 1], samples_t[n_rounds - 1]);
-
-  // HAL_NVIC_DisableIRQ(TIM3_IRQn);
   TIM14->CCR1 = TIM3->CCR1 = TIM17->CCR1 = 0;
   spin_delay(4000);
   __HAL_RCC_TIM3_CLK_DISABLE();
@@ -1197,6 +1213,8 @@ if (1) {
   card_id = candidate_cards[card_id % (sizeof candidate_cards)] - 1;
 }
 
+  entropy_adc(pool, 20);
+
   // ======== Drive display ========
   __attribute__ ((section (".noinit")))
   static uint8_t pixels[200 * 200 / 8];
@@ -1207,7 +1225,21 @@ if (1) {
 
 void display_image(int stage)
 {
-if (stage == 0 || stage == 3) {
+if (stage == -1) {
+  // For testing
+  epd_reset(false, false);
+  for (int i = 0; i < 200 * 200 / 8; i++) pixels[i] = 0xff;
+  char s[36];
+  // Since the pull-up has previously been applied,
+  // this reads 00000ff[def] * 4, thus not a very efficient entropy source
+  snprintf(s, sizeof s, "%08lx %08lx\n%08lx %08lx", pool[0], pool[1], pool[2], pool[3]);
+  uint16_t s16[36];
+  for (int i = 0; i < 36; i++) s16[i] = s[i];
+  print_string(pixels, s16, 3, 3);
+  epd_write_ram(pixels);
+  epd_display(false);
+
+} else if (stage == 0 || stage == 3) {
   if (stage == 0)
     epd_reset(false, false && vri_mV < 2400);
     // XXX: Power-save mode results in dimmed shadows (which is preferred)
@@ -1311,6 +1343,10 @@ if (stage == 0 || stage == 3) {
   epd_sleep();
 }
 }
+
+  display_image(-1);
+  HAL_GPIO_WritePin(GPIOA, PIN_PWR_LATCH, 0);
+  while (1) { }
 
   for (int i = 0; ; i = (i == 3 ? 1 : i + 1)) {
     display_image(i);
