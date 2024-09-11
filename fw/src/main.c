@@ -526,9 +526,6 @@ while (0) {
   // while (1) { }
 }
 
-static uint32_t tim16_capt_count = 0;
-static uint32_t tim16_capt_pool[16] = { 0 };
-
 static inline void entropy_clocks_start()
 {
   HAL_RCC_OscConfig(&(RCC_OscInitTypeDef){
@@ -564,16 +561,13 @@ static inline void entropy_clocks_start()
     .ICPrescaler = TIM_ICPSC_DIV1,
     .ICFilter = 0,
   }, TIM_CHANNEL_1);
-  HAL_TIM_IC_Start_IT(&tim16, TIM_CHANNEL_1);
-  HAL_NVIC_SetPriority(TIM16_IRQn, 3, 0);
-  HAL_NVIC_EnableIRQ(TIM16_IRQn);
+  HAL_TIM_IC_Start(&tim16, TIM_CHANNEL_1);
 }
 
 static inline void entropy_clocks_stop()
 {
   // Stop timer and restore clock source to SYSCLK
-  HAL_NVIC_DisableIRQ(TIM16_IRQn);
-  HAL_TIM_IC_Stop_IT(&tim16, TIM_CHANNEL_1);
+  HAL_TIM_IC_Stop(&tim16, TIM_CHANNEL_1);
   HAL_TIM_IC_DeInit(&tim16);
   TIM_ClockConfigTypeDef tim16_cfg_int = {
     .ClockSource = TIM_CLOCKSOURCE_INTERNAL,
@@ -592,11 +586,22 @@ static inline void entropy_clocks_stop()
 
 #pragma GCC push_options
 #pragma GCC optimize("O3")
-static inline void entropy_clocks(uint32_t *s, int n)
+static inline void entropy_jitter(uint32_t *_s, int n)
 {
-  HAL_NVIC_DisableIRQ(TIM16_IRQn);
-  for (int i = 0; i < n && i < 16; i++) s[i] ^= tim16_capt_pool[i];
-  HAL_NVIC_EnableIRQ(TIM16_IRQn);
+  uint16_t *s = (uint16_t *)_s;
+  uint16_t capt = TIM16->CCR1;
+  uint16_t acc = s[n * 2 - 2] ^ s[n * 2 - 1];
+  s[n * 2 - 2] ^= capt;
+  s[n * 2 - 1] ^= TIM16->CNT;
+  for (int i = 0; i < n * 2; i++) {
+    for (int j = (acc >> 3) & 3; j >= 0; j--) {
+      uint16_t new_capt;
+      while ((new_capt = TIM16->CCR1) == capt) { }
+      s[i] = (s[i] << 7) | (s[i] >> 9);
+      s[i] += new_capt;
+    }
+    acc += s[i];
+  }
 }
 
 static inline void mix(uint32_t *pool, uint32_t n, uint32_t n_round)
@@ -701,46 +706,6 @@ int main()
   // ======== Clocks ========
   setup_clocks();
   HAL_NVIC_SetPriority(SysTick_IRQn, 0, 0);
-
-/*
-  // GPIO self-check
-  struct {
-    GPIO_TypeDef *port;
-    uint32_t pin;
-  } pins[] = {
-    {GPIOA, GPIO_PIN_1},
-    {GPIOA, GPIO_PIN_4},
-    {GPIOA, GPIO_PIN_5},
-    {GPIOA, GPIO_PIN_6},
-    {GPIOA, GPIO_PIN_7},
-  };
-  HAL_GPIO_Init(GPIOA, &(GPIO_InitTypeDef){
-    .Pin = 0b0001100011111111,
-    .Mode = GPIO_MODE_INPUT,
-    .Pull = GPIO_PULLUP,
-  });
-  for (int i = 0; i < sizeof pins / sizeof pins[0]; i++) {
-    HAL_GPIO_Init(pins[i].port, &(GPIO_InitTypeDef){
-      .Pin = pins[i].pin,
-      .Mode = GPIO_MODE_OUTPUT_PP,
-      .Pull = GPIO_NOPULL,
-    });
-    pins[i].port->BSRR = pins[i].pin << 16;
-    spin_delay(100000);
-    uint32_t idr0 = pins[i].port->IDR;
-    pins[i].port->BSRR = pins[i].pin <<  0;
-    spin_delay(100000);
-    uint32_t idr1 = pins[i].port->IDR;
-    HAL_GPIO_Init(pins[i].port, &(GPIO_InitTypeDef){
-      .Pin = pins[i].pin,
-      .Mode = GPIO_MODE_INPUT,
-      .Pull = GPIO_PULLUP,
-    });
-    swv_printf("%d %08x %08x\n", i, idr0, idr1);
-  }
-
-  while (1) sleep_delay(1);
-*/
 
   // Start the lights as soon as possible
   // ======== TIM3, used during ADC entropy accumulation and magical lights ========
@@ -1115,9 +1080,9 @@ while (0) {
   uint32_t t0 = HAL_GetTick();
   entropy_adc(pool, 20);
   uint32_t t1 = HAL_GetTick();
-  entropy_clocks(pool, 20);
+  entropy_jitter(pool, 20);
   uint32_t t2 = HAL_GetTick();
-  swv_printf("%u %u\n", t1 - t0, t2 - t1);  // 8~9 12~14
+  swv_printf("%u %u\n", t1 - t0, t2 - t1);  // 8~9 0~1
 }
 
 redraw:
@@ -1125,11 +1090,10 @@ redraw:
   __HAL_RCC_TIM3_CLK_ENABLE();
 
   entropy_adc(pool, 20);
-  entropy_clocks(pool, 20);
-  entropy_clocks_stop();
+  entropy_jitter(pool, 20);
   mix(pool, 20, 0);
 
-  swv_printf("tick = %u\n", HAL_GetTick()); // tick = 416
+  swv_printf("tick = %u\n", HAL_GetTick()); // tick = 18
 
   // ======== Accumulate entropy while the magical lights flash! ========
   uint32_t btn_released_at = 0;
@@ -1147,7 +1111,7 @@ redraw:
     if (HAL_GetTick() - last_sample >= 100) {
       uint32_t t0 = HAL_GetTick();
       entropy_adc(pool, 20);
-      entropy_clocks(pool, 20);
+      entropy_jitter(pool, 20);
       pool[0] ^= btn_entropy;
       mix(pool, 20, ++n_rounds);
       last_sample += 100;
@@ -1177,6 +1141,12 @@ if (1) {
   flash_read(FILE_ADDR___cards_bin + card_id * 13001 + 10000, &side, 1);
   int offs = (side == 0 ? 0 : 200 / 8 * 160);
 
+// For inspection
+if (0) {
+  for (int i = 0; i < 20; i++) pool[i] = 0;
+  entropy_jitter(pool, 20);
+}
+
 void display_image(int stage)
 {
 if (stage == -1) {
@@ -1184,9 +1154,7 @@ if (stage == -1) {
   epd_reset(false, false);
   for (int i = 0; i < 200 * 200 / 8; i++) pixels[i] = 0xff;
   char s[64];
-  snprintf(s, sizeof s, "%lu samples\n%08lx %08lx\n%08lx %08lx",
-    tim16_capt_count,
-    tim16_capt_pool[0], tim16_capt_pool[1], tim16_capt_pool[2], tim16_capt_pool[3]);
+  snprintf(s, sizeof s, "%08lx %08lx\n%08lx %08lx", pool[0], pool[1], pool[2], pool[3]);
   uint16_t s16[64];
   for (int i = 0; i < 64; i++) s16[i] = s[i];
   print_string(pixels, s16, 3, 3);
@@ -1372,22 +1340,6 @@ print(', '.join('%d' % round(8000*(1+sin(i/N*2*pi))) for i in range(N)))
   TIM17->CCR1 = ((uint32_t)sin_lut[(i + N * 2 / 3) % N] * magical_intensity) >> 16;
 }
 
-#pragma GCC push_options
-#pragma GCC optimize("O3")
-void TIM16_IRQHandler()
-{
-  if (TIM16->SR & TIM_SR_CC1IF) {
-    TIM16->SR = ~TIM_SR_CC1IF;
-    uint32_t index = tim16_capt_count % 16;
-    tim16_capt_pool[index] =
-      (tim16_capt_pool[index] << 13) ^
-      (tim16_capt_pool[index] >> 19) ^
-      TIM16->CCR1;
-    tim16_capt_count++;
-  }
-}
-#pragma GCC pop_options
-
 void RTC_TAMP_IRQHandler()
 {
   if (__HAL_RTC_WAKEUPTIMER_GET_FLAG(&rtc, RTC_FLAG_WUTF))
@@ -1421,6 +1373,7 @@ void ADC1_IRQHandler() { while (1) { } }
 void TIM1_BRK_UP_TRG_COM_IRQHandler() { while (1) { } }
 void TIM1_CC_IRQHandler() { while (1) { } }
 void TIM14_IRQHandler() { while (1) { } }
+void TIM16_IRQHandler() { while (1) { } }
 void TIM17_IRQHandler() { while (1) { } }
 void I2C1_IRQHandler() { while (1) { } }
 void I2C2_IRQHandler() { while (1) { } }
