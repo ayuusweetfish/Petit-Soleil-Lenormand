@@ -1124,7 +1124,7 @@ redraw:
     }
     sleep_delay(1);
   }
-  uint32_t btn_entropy_copy = btn_entropy;
+  time_spent /= n_rounds;
 
   magical_intensity = 0;
   TIM14->CCR1 = TIM3->CCR1 = TIM17->CCR1 = 0;
@@ -1246,21 +1246,19 @@ if (stage == -1) {
   voltage_str[4] = '0' + vri_mV % 10;
   print_string(pixels, voltage_str, 88, 3);
 
-  time_spent /= n_rounds;
-
   uint16_t n_rounds_str[] = {' ', ' ', ' ', ' ', ' ', ' ', 'r', 'o', 'u', 'n', 'd', 's', '\0'};
-  for (int i = 4; i >= 0 && n_rounds > 0; i--, n_rounds /= 10)
-    n_rounds_str[i] = '0' + n_rounds % 10;
+  for (int i = 4, n = n_rounds; i >= 0 && n > 0; i--, n /= 10)
+    n_rounds_str[i] = '0' + n % 10;
   print_string(pixels, n_rounds_str, 105, 3);
 
   uint16_t time_str[] = {' ', ' ', ' ', ' ', ' ', ' ', 'm', 's', '\0'};
-  for (int i = 4; i >= 0 && time_spent > 0; i--, time_spent /= 10)
-    time_str[i] = '0' + time_spent % 10;
+  for (int i = 4, n = time_spent; i >= 0 && n > 0; i--, n /= 10)
+    time_str[i] = '0' + n % 10;
   print_string(pixels, time_str, 122, 3);
 
   uint16_t btn_entropy_str[9] = { 0 };
   for (int i = 0; i < 8; i++)
-    btn_entropy_str[i] = "0123456789abcdef"[(btn_entropy_copy >> ((7 - i) * 4)) % 16];
+    btn_entropy_str[i] = "0123456789abcdef"[(pool[0] >> ((7 - i) * 4)) % 16];
   print_string(pixels, btn_entropy_str, 139, 3);
 
   for (int i = 0; i < 200 * 200 / 8; i++) pixels[i] ^= 0xff;
@@ -1320,10 +1318,9 @@ void EXTI2_3_IRQHandler()
   if (stopped) {
     setup_clocks();
     stopped = false;
-    // TIM14->CCR1 = 2000; // Display blue
   }
 #define rotl32(_x, _n) (((_x) << (_n)) | ((_x) >> (32 - (_n))))
-  btn_entropy = rotl32(btn_entropy, 27) + ((TIM3->CNT << 16) | TIM16->CNT);
+  btn_entropy = rotl32(btn_entropy, 27) + ((TIM3->CNT << 16) | TIM16->CCR1);
   __HAL_GPIO_EXTI_CLEAR_IT(PIN_BUTTON); // Clears both rising and falling signals
 }
 
