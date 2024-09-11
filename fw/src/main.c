@@ -480,35 +480,6 @@ static inline void spin_delay(uint32_t cycles)
 // Also mixes in TIM3, if it is enabled
 static inline void entropy_adc(uint32_t *out_v, int n)
 {
-  HAL_GPIO_Init(GPIOA, &(GPIO_InitTypeDef){
-    .Pin = GPIO_PIN_13,
-    .Mode = GPIO_MODE_ANALOG,
-    .Pull = GPIO_NOPULL,
-    .Speed = GPIO_SPEED_FREQ_HIGH,
-  });
-
-  ADC_ChannelConfTypeDef adc_ch17;
-  adc_ch17.Channel = ADC_CHANNEL_17;
-  adc_ch17.Rank = ADC_REGULAR_RANK_1;
-  adc_ch17.SamplingTime = ADC_SAMPLETIME_1CYCLE_5;
-
-  HAL_ADC_ConfigChannel(&adc1, &adc_ch17);
-  for (int i = 0; i < n; i++) {
-    HAL_ADC_Start(&adc1);
-    HAL_ADC_PollForConversion(&adc1, 1000);
-    out_v[i] = HAL_ADC_GetValue(&adc1);
-    HAL_ADC_Stop(&adc1);
-  }
-
-  HAL_GPIO_Init(GPIOA, &(GPIO_InitTypeDef){
-    .Pin = GPIO_PIN_13,
-    .Mode = GPIO_MODE_AF_PP,
-    .Alternate = GPIO_AF0_SWJ,
-    .Pull = GPIO_PULLUP,
-    .Speed = GPIO_SPEED_FREQ_HIGH,
-  });
-  return;
-
   ADC_ChannelConfTypeDef adc_ch13;
   adc_ch13.Channel = ADC_CHANNEL_VREFINT;
   adc_ch13.Rank = ADC_REGULAR_RANK_1;
@@ -546,7 +517,6 @@ while (0) {
       // ADC has independent clock, but TIM3 lowest bit does not seem to change (stays at 1)?
       uint32_t tim_cnt = (TIM3->CNT >> 1) ^ (TIM16->CCR1 << 4);
       v = (v << 8) | ((adc_value ^ (tim_cnt << 2) ^ (tim_cnt >> 2)) & 0xff);
-      // v = (v << 8) | (adc_value & 0xff);
       if (i % 4 == 3) out_v[i / 4 * 2 + ch] ^= v;
     }
   }
@@ -555,6 +525,9 @@ while (0) {
   // for (int i = 0; i < n; i++) swv_printf("%08x%c", out_v[i], i % 10 == 9 ? '\n' : ' ');
   // while (1) { }
 }
+
+static uint32_t tim16_capt_count = 0;
+static uint32_t tim16_capt_pool[16] = { 0 };
 
 static inline void entropy_clocks_start()
 {
@@ -591,13 +564,16 @@ static inline void entropy_clocks_start()
     .ICPrescaler = TIM_ICPSC_DIV1,
     .ICFilter = 0,
   }, TIM_CHANNEL_1);
-  HAL_TIM_IC_Start(&tim16, TIM_CHANNEL_1);
+  HAL_TIM_IC_Start_IT(&tim16, TIM_CHANNEL_1);
+  HAL_NVIC_SetPriority(TIM16_IRQn, 3, 0);
+  HAL_NVIC_EnableIRQ(TIM16_IRQn);
 }
 
 static inline void entropy_clocks_stop()
 {
   // Stop timer and restore clock source to SYSCLK
-  HAL_TIM_IC_Stop(&tim16, TIM_CHANNEL_1);
+  HAL_NVIC_DisableIRQ(TIM16_IRQn);
+  HAL_TIM_IC_Stop_IT(&tim16, TIM_CHANNEL_1);
   HAL_TIM_IC_DeInit(&tim16);
   TIM_ClockConfigTypeDef tim16_cfg_int = {
     .ClockSource = TIM_CLOCKSOURCE_INTERNAL,
@@ -616,19 +592,11 @@ static inline void entropy_clocks_stop()
 
 #pragma GCC push_options
 #pragma GCC optimize("O3")
-static inline void entropy_clocks(uint32_t *_s, int n)
+static inline void entropy_clocks(uint32_t *s, int n)
 {
-  uint16_t *s = (uint16_t *)_s;
-  // LSI-HSI ratio
-  for (int i = 0; i < n * 2; i++) {
-    uint16_t last0 = (i == 0 ? s[n - 1] : s[i - 1]);
-    uint16_t last1 = (i == 0 ? s[n - 2] : i == 1 ? s[n - 1] : s[i - 2]);
-    int ops = 200 + (((last0 << 4) ^ ((uint32_t)(last0 >> 8) * last1)) & 0x7ff);
-    spin_delay(ops);
-    s[i] += TIM16->CCR1;
-  }
-  // for (int i = 0; i < n * 2; i++) swv_printf("%04x%c", s[i], i % 20 == 19 ? '\n' : ' ');
-  // while (1) { }
+  HAL_NVIC_DisableIRQ(TIM16_IRQn);
+  for (int i = 0; i < n && i < 16; i++) s[i] ^= tim16_capt_pool[i];
+  HAL_NVIC_EnableIRQ(TIM16_IRQn);
 }
 
 static inline void mix(uint32_t *pool, uint32_t n, uint32_t n_round)
@@ -719,18 +687,6 @@ int main()
   gpio_init.Pull = GPIO_PULLUP;
   gpio_init.Speed = GPIO_SPEED_FREQ_HIGH;
   HAL_GPIO_Init(GPIOA, &gpio_init);
-
-/*
-  swv_printf("%08x%08x %08x%08x %08x%08x %08x%08x\n",
-    (uint32_t)(mem1 >> 32),
-    (uint32_t)(mem1 >>  0),
-    (uint32_t)(mem2 >> 32),
-    (uint32_t)(mem2 >>  0),
-    (uint32_t)(mem3 >> 32),
-    (uint32_t)(mem3 >>  0),
-    (uint32_t)(mem4 >> 32),
-    (uint32_t)(mem4 >>  0));
-*/
 
   // ======= Power latch ======
   gpio_init = (GPIO_InitTypeDef){
@@ -1169,11 +1125,11 @@ redraw:
   __HAL_RCC_TIM3_CLK_ENABLE();
 
   entropy_adc(pool, 20);
-  // entropy_clocks(pool, 20);
+  entropy_clocks(pool, 20);
   entropy_clocks_stop();
   mix(pool, 20, 0);
 
-  // swv_printf("tick = %u\n", HAL_GetTick()); // tick = 7
+  swv_printf("tick = %u\n", HAL_GetTick()); // tick = 416
 
   // ======== Accumulate entropy while the magical lights flash! ========
   uint32_t btn_released_at = 0;
@@ -1213,8 +1169,6 @@ if (1) {
   card_id = candidate_cards[card_id % (sizeof candidate_cards)] - 1;
 }
 
-  entropy_adc(pool, 20);
-
   // ======== Drive display ========
   __attribute__ ((section (".noinit")))
   static uint8_t pixels[200 * 200 / 8];
@@ -1229,12 +1183,12 @@ if (stage == -1) {
   // For testing
   epd_reset(false, false);
   for (int i = 0; i < 200 * 200 / 8; i++) pixels[i] = 0xff;
-  char s[36];
-  // Since the pull-up has previously been applied,
-  // this reads 00000ff[def] * 4, thus not a very efficient entropy source
-  snprintf(s, sizeof s, "%08lx %08lx\n%08lx %08lx", pool[0], pool[1], pool[2], pool[3]);
-  uint16_t s16[36];
-  for (int i = 0; i < 36; i++) s16[i] = s[i];
+  char s[64];
+  snprintf(s, sizeof s, "%lu samples\n%08lx %08lx\n%08lx %08lx",
+    tim16_capt_count,
+    tim16_capt_pool[0], tim16_capt_pool[1], tim16_capt_pool[2], tim16_capt_pool[3]);
+  uint16_t s16[64];
+  for (int i = 0; i < 64; i++) s16[i] = s[i];
   print_string(pixels, s16, 3, 3);
   epd_write_ram(pixels);
   epd_display(false);
@@ -1418,6 +1372,22 @@ print(', '.join('%d' % round(8000*(1+sin(i/N*2*pi))) for i in range(N)))
   TIM17->CCR1 = ((uint32_t)sin_lut[(i + N * 2 / 3) % N] * magical_intensity) >> 16;
 }
 
+#pragma GCC push_options
+#pragma GCC optimize("O3")
+void TIM16_IRQHandler()
+{
+  if (TIM16->SR & TIM_SR_CC1IF) {
+    TIM16->SR = ~TIM_SR_CC1IF;
+    uint32_t index = tim16_capt_count % 16;
+    tim16_capt_pool[index] =
+      (tim16_capt_pool[index] << 13) ^
+      (tim16_capt_pool[index] >> 19) ^
+      TIM16->CCR1;
+    tim16_capt_count++;
+  }
+}
+#pragma GCC pop_options
+
 void RTC_TAMP_IRQHandler()
 {
   if (__HAL_RTC_WAKEUPTIMER_GET_FLAG(&rtc, RTC_FLAG_WUTF))
@@ -1451,7 +1421,6 @@ void ADC1_IRQHandler() { while (1) { } }
 void TIM1_BRK_UP_TRG_COM_IRQHandler() { while (1) { } }
 void TIM1_CC_IRQHandler() { while (1) { } }
 void TIM14_IRQHandler() { while (1) { } }
-void TIM16_IRQHandler() { while (1) { } }
 void TIM17_IRQHandler() { while (1) { } }
 void I2C1_IRQHandler() { while (1) { } }
 void I2C2_IRQHandler() { while (1) { } }
