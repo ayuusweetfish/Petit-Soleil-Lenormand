@@ -59,6 +59,7 @@ static volatile bool stopped = false;
 static volatile bool btn_active = true; // Assume the button is pressed on boot
 static volatile uint32_t btn_entropy = 0;
 static uint32_t magical_intensity = 0;
+static uint32_t magical_started_at = 0;
 
 #pragma GCC push_options
 #pragma GCC optimize("O3")
@@ -833,6 +834,7 @@ int main()
   HAL_EXTI_SetConfigLine(&exti_handle, &exti_cfg);
 
   // Interrupt
+  magical_started_at = HAL_GetTick();
   magical_intensity = 65536 / 8;
   HAL_NVIC_SetPriority(EXTI2_3_IRQn, 1, 0);
   HAL_NVIC_EnableIRQ(EXTI2_3_IRQn);
@@ -1086,6 +1088,7 @@ while (0) {
 }
 
 redraw:
+  magical_started_at = HAL_GetTick();
   magical_intensity = 65536 / 8;
   __HAL_RCC_TIM3_CLK_ENABLE();
 
@@ -1093,13 +1096,14 @@ redraw:
   entropy_jitter(pool, 20);
   mix(pool, 20, 0);
 
-  swv_printf("tick = %u\n", HAL_GetTick()); // tick = 18
+  // swv_printf("tick = %u\n", HAL_GetTick()); // tick = 18
 
   // ======== Accumulate entropy while the magical lights flash! ========
+  const uint32_t sample_interval = 40;
   uint32_t btn_released_at = 0;
   uint32_t n_rounds = 0;
   uint32_t time_spent = 0;
-  uint32_t last_sample = HAL_GetTick() - 100;
+  uint32_t last_sample = HAL_GetTick() - sample_interval;
   while (btn_released_at == 0 || HAL_GetTick() - btn_released_at < 2000) {
     if (btn_released_at == 0) {
       if (!btn_active) btn_released_at = HAL_GetTick();
@@ -1108,19 +1112,21 @@ redraw:
       if (t >= 1500)
         magical_intensity = 65536 / 8 * (2000 - t) / 500 * (2000 - t) / 500;
     }
-    if (HAL_GetTick() - last_sample >= 100) {
+    if (HAL_GetTick() - last_sample >= sample_interval) {
       uint32_t t0 = HAL_GetTick();
       entropy_adc(pool, 20);
       entropy_jitter(pool, 20);
       pool[0] ^= btn_entropy;
       mix(pool, 20, ++n_rounds);
-      last_sample += 100;
+      entropy_jitter(pool, 20);
+      last_sample += 40;
       time_spent += (HAL_GetTick() - t0);
     }
     sleep_delay(1);
   }
   uint32_t btn_entropy_copy = btn_entropy;
 
+  magical_intensity = 0;
   TIM14->CCR1 = TIM3->CCR1 = TIM17->CCR1 = 0;
   spin_delay(4000);
   __HAL_RCC_TIM3_CLK_DISABLE();
@@ -1153,9 +1159,9 @@ if (stage == -1) {
   // For testing
   epd_reset(false, false);
   for (int i = 0; i < 200 * 200 / 8; i++) pixels[i] = 0xff;
-  char s[64];
+  static char s[64];
   snprintf(s, sizeof s, "%08lx %08lx\n%08lx %08lx", pool[0], pool[1], pool[2], pool[3]);
-  uint16_t s16[64];
+  static uint16_t s16[64];
   for (int i = 0; i < 64; i++) s16[i] = s[i];
   print_string(pixels, s16, 3, 3);
   epd_write_ram(pixels);
@@ -1266,9 +1272,11 @@ if (stage == -1) {
 }
 }
 
+if (0) {
   display_image(-1);
   HAL_GPIO_WritePin(GPIOA, PIN_PWR_LATCH, 0);
   while (1) { }
+}
 
   for (int i = 0; ; i = (i == 3 ? 1 : i + 1)) {
     display_image(i);
@@ -1315,7 +1323,7 @@ void EXTI2_3_IRQHandler()
     // TIM14->CCR1 = 2000; // Display blue
   }
 #define rotl32(_x, _n) (((_x) << (_n)) | ((_x) >> (32 - (_n))))
-  btn_entropy = rotl32(btn_entropy, 28) + ((TIM3->CNT << 16) | TIM16->CNT);
+  btn_entropy = rotl32(btn_entropy, 27) + ((TIM3->CNT << 16) | TIM16->CNT);
   __HAL_GPIO_EXTI_CLEAR_IT(PIN_BUTTON); // Clears both rising and falling signals
 }
 
@@ -1335,9 +1343,13 @@ print(', '.join('%d' % round(8000*(1+sin(i/N*2*pi))) for i in range(N)))
   };
   static uint16_t i = 0;
   i += 1;
-  TIM14->CCR1 = ((uint32_t)sin_lut[i % N] * magical_intensity) >> 16;
-  TIM3->CCR1 = ((uint32_t)sin_lut[(i + N / 3) % N] * magical_intensity) >> 16;
-  TIM17->CCR1 = ((uint32_t)sin_lut[(i + N * 2 / 3) % N] * magical_intensity) >> 16;
+  uint32_t intensity = magical_intensity;
+  uint32_t into_time = HAL_GetTick() - magical_started_at;
+  if (into_time < 200)
+    intensity = intensity * into_time / 200;
+  TIM14->CCR1 = ((uint32_t)sin_lut[i % N] * intensity) >> 16;
+  TIM3->CCR1 = ((uint32_t)sin_lut[(i + N / 3) % N] * intensity) >> 16;
+  TIM17->CCR1 = ((uint32_t)sin_lut[(i + N * 2 / 3) % N] * intensity) >> 16;
 }
 
 void RTC_TAMP_IRQHandler()
