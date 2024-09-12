@@ -515,7 +515,7 @@ static void entropy_ram(uint32_t *pool)
     "   add r11, r3\n"
     "   add r1, #32\n"
     "   cmp r1, r2\n"
-    "   bl  1b\n"
+    "   blt 1b\n"
 
     // Write to memory
     "   str r4, [%[pool_addr], #0]\n"
@@ -733,6 +733,7 @@ int main()
 {
   uint32_t pool[20];
   entropy_ram(pool);
+  for (int i = 12; i < 20; i++) pool[i] = 0;
 
   HAL_Init();
 
