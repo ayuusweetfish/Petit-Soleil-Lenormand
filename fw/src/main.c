@@ -58,6 +58,8 @@ RTC_HandleTypeDef rtc;
 static volatile bool stopped = false;
 static volatile bool btn_active = true; // Assume the button is pressed on boot
 static volatile uint32_t btn_entropy = 0;
+#define MAGICAL_N 360
+static uint32_t magical_phase = 0;
 static uint32_t magical_intensity = 0;
 static uint32_t magical_started_at = 0;
 
@@ -706,7 +708,8 @@ static int draw_card(const uint32_t *pool, const size_t len)
 
 void setup_clocks()
 {
-  HAL_PWREx_EnableLowPowerRunMode();
+  // Low-power run mode limits system clock to 2 MHz
+  // HAL_PWREx_EnableLowPowerRunMode();
 
   RCC_OscInitTypeDef osc_init = { 0 };
   osc_init.OscillatorType = RCC_OSCILLATORTYPE_HSI;
@@ -1007,7 +1010,9 @@ bool stop_wait_button(uint32_t min_dur, uint32_t max_dur)
   HAL_ADCEx_Calibration_Start(&adc1);
 
   // Wait some time for the voltage to recover?
-  sleep_delay(2);
+  // No need; in tests, waiting 10 ms does not make much of a difference
+  // (sensed value may become higher or lower by < 100 mV)
+  if (false) sleep_delay(2);
 
   uint32_t adc_vrefint, adc_vri, vri_mV;
 
@@ -1022,9 +1027,6 @@ void sense_vri()
   HAL_ADC_PollForConversion(&adc1, 1000);
   adc_vrefint = HAL_ADC_GetValue(&adc1);
   HAL_ADC_Stop(&adc1);
-  // swv_printf("ADC VREFINT cal = %lu\n", *VREFINT_CAL_ADDR);
-  // swv_printf("ADC VREFINT = %lu\n", adc_vrefint);
-  // VREFINT cal = 1667, VREFINT read = 1550 -> VDD = 1667/1550 * 3 V = 3.226 V
 
   ADC_ChannelConfTypeDef adc_ch0;
   adc_ch0.Channel = ADC_CHANNEL_0;
@@ -1035,12 +1037,12 @@ void sense_vri()
   HAL_ADC_PollForConversion(&adc1, 1000);
   adc_vri = HAL_ADC_GetValue(&adc1);
   HAL_ADC_Stop(&adc1);
-  // swv_printf("ADC VRI = %lu\n", adc_vri);
+  // Sample:
   // VREFINT cal = 1656, VREFINT read = 1542, VRI read = 3813
+  // -> VDD = 1656/1542 * 3 V = 3.22 V
   // -> VRI = 3813/4095 * (1656/1542 * 3 V) = 3.00 V
 
   vri_mV = (uint32_t)(3000ULL * adc_vri * (*VREFINT_CAL_ADDR) / (4095 * adc_vrefint));
-  // swv_printf("VRI = %lu mV\n", vri_mV);
 }
   sense_vri();
 
@@ -1134,15 +1136,16 @@ while (0) {
 }
 
 redraw:
+  entropy_adc(pool + 10, 10);
+  entropy_jitter(pool, 20);
+  mix(pool, 20, 0);
+
+  magical_phase = pool[0] % MAGICAL_N;
   magical_started_at = HAL_GetTick();
   magical_intensity = 65536 / 8;
   __HAL_RCC_TIM3_CLK_ENABLE();
 
-  entropy_adc(pool, 20);
-  entropy_jitter(pool, 20);
-  mix(pool, 20, 0);
-
-  // swv_printf("tick = %u\n", HAL_GetTick()); // tick = 18
+  // swv_printf("tick = %u\n", HAL_GetTick()); // tick = 13
 
   // ======== Accumulate entropy while the magical lights flash! ========
   const uint32_t sample_interval = 40;
@@ -1380,19 +1383,25 @@ from math import *
 N=360
 print(', '.join('%d' % round(8000*(1+sin(i/N*2*pi))) for i in range(N)))
 */
-#define N 360
-  static const uint16_t sin_lut[N] = {
+  static const uint16_t sin_lut[MAGICAL_N] = {
 8000, 8140, 8279, 8419, 8558, 8697, 8836, 8975, 9113, 9251, 9389, 9526, 9663, 9800, 9935, 10071, 10205, 10339, 10472, 10605, 10736, 10867, 10997, 11126, 11254, 11381, 11507, 11632, 11756, 11878, 12000, 12120, 12239, 12357, 12474, 12589, 12702, 12815, 12925, 13035, 13142, 13248, 13353, 13456, 13557, 13657, 13755, 13851, 13945, 14038, 14128, 14217, 14304, 14389, 14472, 14553, 14632, 14709, 14784, 14857, 14928, 14997, 15064, 15128, 15190, 15250, 15308, 15364, 15417, 15469, 15518, 15564, 15608, 15650, 15690, 15727, 15762, 15795, 15825, 15853, 15878, 15902, 15922, 15940, 15956, 15970, 15981, 15989, 15995, 15999, 16000, 15999, 15995, 15989, 15981, 15970, 15956, 15940, 15922, 15902, 15878, 15853, 15825, 15795, 15762, 15727, 15690, 15650, 15608, 15564, 15518, 15469, 15417, 15364, 15308, 15250, 15190, 15128, 15064, 14997, 14928, 14857, 14784, 14709, 14632, 14553, 14472, 14389, 14304, 14217, 14128, 14038, 13945, 13851, 13755, 13657, 13557, 13456, 13353, 13248, 13142, 13035, 12925, 12815, 12702, 12589, 12474, 12357, 12239, 12120, 12000, 11878, 11756, 11632, 11507, 11381, 11254, 11126, 10997, 10867, 10736, 10605, 10472, 10339, 10205, 10071, 9935, 9800, 9663, 9526, 9389, 9251, 9113, 8975, 8836, 8697, 8558, 8419, 8279, 8140, 8000, 7860, 7721, 7581, 7442, 7303, 7164, 7025, 6887, 6749, 6611, 6474, 6337, 6200, 6065, 5929, 5795, 5661, 5528, 5395, 5264, 5133, 5003, 4874, 4746, 4619, 4493, 4368, 4244, 4122, 4000, 3880, 3761, 3643, 3526, 3411, 3298, 3185, 3075, 2965, 2858, 2752, 2647, 2544, 2443, 2343, 2245, 2149, 2055, 1962, 1872, 1783, 1696, 1611, 1528, 1447, 1368, 1291, 1216, 1143, 1072, 1003, 936, 872, 810, 750, 692, 636, 583, 531, 482, 436, 392, 350, 310, 273, 238, 205, 175, 147, 122, 98, 78, 60, 44, 30, 19, 11, 5, 1, 0, 1, 5, 11, 19, 30, 44, 60, 78, 98, 122, 147, 175, 205, 238, 273, 310, 350, 392, 436, 482, 531, 583, 636, 692, 750, 810, 872, 936, 1003, 1072, 1143, 1216, 1291, 1368, 1447, 1528, 1611, 1696, 1783, 1872, 1962, 2055, 2149, 2245, 2343, 2443, 2544, 2647, 2752, 2858, 2965, 3075, 3185, 3298, 3411, 3526, 3643, 3761, 3880, 4000, 4122, 4244, 4368, 4493, 4619, 4746, 4874, 5003, 5133, 5264, 5395, 5528, 5661, 5795, 5929, 6065, 6200, 6337, 6474, 6611, 6749, 6887, 7025, 7164, 7303, 7442, 7581, 7721, 7860
   };
-  static uint16_t i = 0;
-  i += 1;
+
+  magical_phase += 1;
+  if (magical_phase == MAGICAL_N) magical_phase = 0;
+  uint32_t p0 = magical_phase;
+  uint32_t p1 = magical_phase + MAGICAL_N / 3;
+  if (p1 >= MAGICAL_N) p1 -= MAGICAL_N;
+  uint32_t p2 = magical_phase + MAGICAL_N * 2 / 3;
+  if (p2 >= MAGICAL_N) p2 -= MAGICAL_N;
+
   uint32_t intensity = magical_intensity;
   uint32_t into_time = HAL_GetTick() - magical_started_at;
   if (into_time < 200)
     intensity = intensity * into_time / 200;
-  TIM14->CCR1 = ((uint32_t)sin_lut[i % N] * intensity) >> 16;
-  TIM3->CCR1 = ((uint32_t)sin_lut[(i + N / 3) % N] * intensity) >> 16;
-  TIM17->CCR1 = ((uint32_t)sin_lut[(i + N * 2 / 3) % N] * intensity) >> 16;
+  TIM14->CCR1 = ((uint32_t)sin_lut[p0] * intensity) >> 16;
+  TIM3->CCR1 = ((uint32_t)sin_lut[p1] * intensity) >> 16;
+  TIM17->CCR1 = ((uint32_t)sin_lut[p2] * intensity) >> 16;
 }
 
 void RTC_TAMP_IRQHandler()
