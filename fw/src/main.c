@@ -63,6 +63,33 @@ static volatile uint32_t btn_entropy = 0;
 static uint32_t magical_phase = 0;
 static uint32_t magical_intensity = 0;
 
+static inline void sleep_delay(uint32_t ticks)
+{
+  uint32_t t0 = HAL_GetTick();
+  while (HAL_GetTick() - t0 < ticks) {
+    HAL_PWR_EnterSLEEPMode(PWR_MAINREGULATOR_ON, PWR_SLEEPENTRY_WFI);
+  }
+}
+
+static inline void spin_delay(uint32_t cycles)
+{
+  // GCC (10.3.1 xPack) gives extraneous `cmp r0, #0`??
+  // for (cycles = (cycles - 5) / 4; cycles > 0; cycles--) asm volatile ("");
+  __asm__ volatile (
+    "   cmp %[cycles], #5\n"
+    "   ble 2f\n"
+    "   sub %[cycles], #5\n"
+    "   lsr %[cycles], #2\n"
+    "1: sub %[cycles], #1\n"
+    "   nop\n"
+    "   bne 1b\n"   // 2 cycles if taken
+    "2: \n"
+    : [cycles] "+l" (cycles)
+    : // No output
+    : "cc"
+  );
+}
+
 #pragma GCC push_options
 #pragma GCC optimize("O3")
 static inline void spi_transmit(const uint8_t *data, size_t size)
@@ -104,33 +131,21 @@ static inline void _epd_cmd(uint8_t cmd, const uint8_t *params, size_t params_si
 static inline void epd_waitbusy()
 {
   // Wait for PIN_EP_BUSY to go low
-  // while (HAL_GPIO_ReadPin(GPIOA, PIN_EP_BUSY) == GPIO_PIN_SET) { } return;
-
-  // Direct check here isn't perfect:
-  // What if the pin goes low in the middle of the following invocations?
-  // Needs direct register accesses to check right before entering STOP mode
-  // if (HAL_GPIO_ReadPin(GPIOA, PIN_EP_BUSY) == 0) return;
-
-  // Still doesn't work perfectly; strangely, sometimes this subroutine returns immediately
-  // To be investigated.
-
-  HAL_SuspendTick();
-  __HAL_PWR_CLEAR_FLAG(PWR_FLAG_WUF);
-  __HAL_RTC_WAKEUPTIMER_CLEAR_FLAG(&rtc, RTC_FLAG_WUTF);
-  HAL_RTCEx_SetWakeUpTimer_IT(&rtc, 10, RTC_WAKEUPCLOCK_CK_SPRE_16BITS);
-  stopped = true;
-
-  // HAL_PWR_EnterSTOPMode(PWR_LOWPOWERREGULATOR_ON, PWR_STOPENTRY_WFI);
-  PWR->CR1 = (PWR->CR1 & ~PWR_CR1_LPMS) | PWR_CR1_LPMS_0;
-  if (GPIOA->IDR & PIN_EP_BUSY) {
-    SCB->SCR |= SCB_SCR_SLEEPDEEP_Msk;
-    __WFI();
-    SCB->SCR &= ~SCB_SCR_SLEEPDEEP_Msk;
+  uint32_t t0 = HAL_GetTick();
+  while (HAL_GPIO_ReadPin(GPIOA, PIN_EP_BUSY) == GPIO_PIN_SET) {
+    if (HAL_GetTick() - t0 > 5000) {
+      // Fail!
+      TIM14->CCR1 = TIM3->CCR1 = TIM17->CCR1 = 0;
+      for (int i = 0; i < 3; i++) {
+        TIM3->CCR1 = 2000; sleep_delay(100);
+        TIM3->CCR1 =    0; sleep_delay(100);
+      }
+      HAL_GPIO_WritePin(GPIOA, PIN_PWR_LATCH, 0);
+      sleep_delay(1000);
+      NVIC_SystemReset();
+    }
+    sleep_delay(1);
   }
-
-  stopped = false;
-  HAL_RTCEx_DeactivateWakeUpTimer(&rtc);
-  HAL_ResumeTick();
 }
 #pragma GCC pop_options
 
@@ -152,9 +167,9 @@ static void epd_reset(bool partial, bool power_save)
 {
   // (1) HW & SW Reset
   HAL_GPIO_WritePin(GPIOA, PIN_EP_NRST, GPIO_PIN_RESET);
-  HAL_Delay(10);
+  sleep_delay(10);
   HAL_GPIO_WritePin(GPIOA, PIN_EP_NRST, GPIO_PIN_SET);
-  HAL_Delay(10);
+  sleep_delay(10);
   epd_waitbusy();
   // SW RESET
   epd_cmd(0x12);
@@ -462,33 +477,6 @@ void bitmap_font_read_data(uint32_t glyph, uint8_t *buf)
   flash_read(FILE_ADDR___wenquanyi_9pt_bin + glyph * 2, idxbuf, 2);
   uint16_t idx = ((uint16_t)idxbuf[0] << 8) | idxbuf[1];
   flash_read(FILE_ADDR___wenquanyi_9pt_bin + 0x20000 + (uint32_t)idx * 19, buf, 19);
-}
-
-static inline void sleep_delay(uint32_t ticks)
-{
-  uint32_t t0 = HAL_GetTick();
-  while (HAL_GetTick() - t0 < ticks) {
-    HAL_PWR_EnterSLEEPMode(PWR_MAINREGULATOR_ON, PWR_SLEEPENTRY_WFI);
-  }
-}
-
-static inline void spin_delay(uint32_t cycles)
-{
-  // GCC (10.3.1 xPack) gives extraneous `cmp r0, #0`??
-  // for (cycles = (cycles - 5) / 4; cycles > 0; cycles--) asm volatile ("");
-  __asm__ volatile (
-    "   cmp %[cycles], #5\n"
-    "   ble 2f\n"
-    "   sub %[cycles], #5\n"
-    "   lsr %[cycles], #2\n"
-    "1: sub %[cycles], #1\n"
-    "   nop\n"
-    "   bne 1b\n"   // 2 cycles if taken
-    "2: \n"
-    : [cycles] "+l" (cycles)
-    : // No output
-    : "cc"
-  );
 }
 
 // Entropy from randomly initialised memory
