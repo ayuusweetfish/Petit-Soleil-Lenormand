@@ -14,6 +14,7 @@
 #define PIN_EP_DCC    GPIO_PIN_1
 #define PIN_EP_NRST   GPIO_PIN_11
 #define PIN_EP_BUSY   GPIO_PIN_12
+#define EXTI_LINE_EP_BUSY EXTI_LINE_12
 #define PIN_BUTTON    GPIO_PIN_2
 #define EXTI_LINE_BUTTON  EXTI_LINE_2
 #define PIN_PWR_LATCH GPIO_PIN_3
@@ -100,24 +101,36 @@ static inline void _epd_cmd(uint8_t cmd, const uint8_t *params, size_t params_si
   uint8_t params[] = { __VA_ARGS__ }; \
   _epd_cmd(_cmd, params, sizeof params); \
 } while (0)
-static inline bool epd_waitbusy()
+static inline void epd_waitbusy()
 {
-  // while (HAL_GPIO_ReadPin(GPIOA, PIN_EP_BUSY) == GPIO_PIN_SET) { }
-  uint32_t t0 = HAL_GetTick();
-  while (HAL_GPIO_ReadPin(GPIOA, PIN_EP_BUSY) == GPIO_PIN_SET)
-    if (HAL_GetTick() - t0 > 5000) {
-      // Fail!
-      TIM14->CCR1 = TIM3->CCR1 = TIM17->CCR1 = 0;
-      for (int i = 0; i < 3; i++) {
-        TIM3->CCR1 = 2000; HAL_Delay(100);
-        TIM3->CCR1 =    0; HAL_Delay(100);
-      }
-      HAL_GPIO_WritePin(GPIOA, PIN_PWR_LATCH, 0);
-      HAL_Delay(1000);
-      NVIC_SystemReset();
-      return false;
-    }
-  return true;
+  // Wait for PIN_EP_BUSY to go low
+  // while (HAL_GPIO_ReadPin(GPIOA, PIN_EP_BUSY) == GPIO_PIN_SET) { } return;
+
+  // Direct check here isn't perfect:
+  // What if the pin goes low in the middle of the following invocations?
+  // Needs direct register accesses to check right before entering STOP mode
+  // if (HAL_GPIO_ReadPin(GPIOA, PIN_EP_BUSY) == 0) return;
+
+  // Still doesn't work perfectly; strangely, sometimes this subroutine returns immediately
+  // To be investigated.
+
+  HAL_SuspendTick();
+  __HAL_PWR_CLEAR_FLAG(PWR_FLAG_WUF);
+  __HAL_RTC_WAKEUPTIMER_CLEAR_FLAG(&rtc, RTC_FLAG_WUTF);
+  HAL_RTCEx_SetWakeUpTimer_IT(&rtc, 10, RTC_WAKEUPCLOCK_CK_SPRE_16BITS);
+  stopped = true;
+
+  // HAL_PWR_EnterSTOPMode(PWR_LOWPOWERREGULATOR_ON, PWR_STOPENTRY_WFI);
+  PWR->CR1 = (PWR->CR1 & ~PWR_CR1_LPMS) | PWR_CR1_LPMS_0;
+  if (GPIOA->IDR & PIN_EP_BUSY) {
+    SCB->SCR |= SCB_SCR_SLEEPDEEP_Msk;
+    __WFI();
+    SCB->SCR &= ~SCB_SCR_SLEEPDEEP_Msk;
+  }
+
+  stopped = false;
+  HAL_RTCEx_DeactivateWakeUpTimer(&rtc);
+  HAL_ResumeTick();
 }
 #pragma GCC pop_options
 
@@ -709,6 +722,7 @@ void setup_clocks()
 {
   // Low-power run mode limits system clock to 2 MHz
   // HAL_PWREx_EnableLowPowerRunMode();
+  HAL_PWREx_ControlVoltageScaling(PWR_REGULATOR_VOLTAGE_SCALE2);
 
   RCC_OscInitTypeDef osc_init = { 0 };
   osc_init.OscillatorType = RCC_OSCILLATORTYPE_HSI;
@@ -994,6 +1008,20 @@ void sense_vri()
 
   // Deep sleep
   epd_cmd(0x10, 0x01);
+
+  // Busy pin trigger
+  HAL_EXTI_SetConfigLine(&(EXTI_HandleTypeDef){
+    // .Line = 12,
+    .RisingCallback = NULL,
+    .FallingCallback = NULL,
+  }, &(EXTI_ConfigTypeDef){
+    .Line = EXTI_LINE_EP_BUSY,
+    .Mode = EXTI_MODE_INTERRUPT,
+    .Trigger = EXTI_TRIGGER_FALLING,
+    .GPIOSel = EXTI_GPIOA,
+  });
+  HAL_NVIC_SetPriority(EXTI4_15_IRQn, 1, 0);
+  HAL_NVIC_EnableIRQ(EXTI4_15_IRQn);
 
   TIM14->CCR1 = TIM3->CCR1 = TIM17->CCR1 = 0;
 
@@ -1373,6 +1401,15 @@ void EXTI2_3_IRQHandler()
   __HAL_GPIO_EXTI_CLEAR_IT(PIN_BUTTON); // Clears both rising and falling signals
 }
 
+void EXTI4_15_IRQHandler()
+{
+  if (stopped) {
+    setup_clocks();
+    stopped = false;
+  }
+  __HAL_GPIO_EXTI_CLEAR_IT(PIN_EP_BUSY);
+}
+
 void TIM3_IRQHandler()
 {
   // Clear interrupt flag
@@ -1426,7 +1463,6 @@ void WWDG_IRQHandler() { while (1) { } }
 void FLASH_IRQHandler() { while (1) { } }
 void RCC_IRQHandler() { while (1) { } }
 void EXTI0_1_IRQHandler() { while (1) { } }
-void EXTI4_15_IRQHandler() { while (1) { } }
 void DMA1_Channel1_IRQHandler() { while (1) { } }
 void DMA1_Channel2_3_IRQHandler() { while (1) { } }
 void DMA1_Ch4_5_DMAMUX1_OVR_IRQHandler() { while (1) { } }
