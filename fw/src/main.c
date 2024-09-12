@@ -364,6 +364,18 @@ void flash_id(uint8_t jedec[3], uint8_t uid[4])
   flash_cmd_bi_sized(op_read_uid, sizeof op_read_uid, uid, 4);
 }
 
+void flash_power_down()
+{
+  uint8_t op_power_down[] = {0xB9};
+  flash_cmd(op_power_down);
+}
+
+void flash_release_power_down()
+{
+  uint8_t op_release_power_down[] = {0xAB};
+  flash_cmd(op_release_power_down);
+}
+
 void flash_erase_4k(uint32_t addr)
 {
   addr &= ~0xFFF;
@@ -1048,6 +1060,7 @@ void sense_vri()
 #if MANUFACTURE
   flash_test_write_breakpoint();
 #endif
+  flash_power_down();
 
   // Lights!
   // ======== TIM3, used during ADC entropy accumulation and magical lights ========
@@ -1365,7 +1378,11 @@ if (0) {
 }
 
   for (int i = 0; ; i = (i == 3 ? 1 : i + 1)) {
+    flash_release_power_down();
+    spin_delay(16 * 3); // tRES1 = 3 µs max.
     display_image(i);
+    flash_power_down();
+
     // Blink green
     for (int i = 0; i < 1; i++) {
       TIM17->CCR1 = 500; sleep_delay(100);
