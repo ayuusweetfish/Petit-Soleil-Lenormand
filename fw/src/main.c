@@ -59,6 +59,13 @@ RTC_HandleTypeDef rtc;
 static volatile bool stopped = false;
 static volatile bool btn_active = true; // Assume the button is pressed on boot
 static volatile uint32_t btn_entropy = 0;
+
+static enum {
+  RTC_WAITING_FOR_NONE = 0,
+  RTC_WAITING_FOR_BTN = 1,
+  RTC_WAITING_FOR_EP_BUSY = 2,
+} rtc_waiting_for = RTC_WAITING_FOR_NONE;
+
 #define MAGICAL_N 360
 static uint32_t magical_phase = 0;
 static uint32_t magical_intensity = 0;
@@ -131,20 +138,34 @@ static inline void _epd_cmd(uint8_t cmd, const uint8_t *params, size_t params_si
 static inline void epd_waitbusy()
 {
   // Wait for PIN_EP_BUSY to go low
-  uint32_t t0 = HAL_GetTick();
-  while (HAL_GPIO_ReadPin(GPIOA, PIN_EP_BUSY) == GPIO_PIN_SET) {
-    if (HAL_GetTick() - t0 > 5000) {
-      // Fail!
-      TIM14->CCR1 = TIM3->CCR1 = TIM17->CCR1 = 0;
-      for (int i = 0; i < 3; i++) {
-        TIM3->CCR1 = 2000; sleep_delay(100);
-        TIM3->CCR1 =    0; sleep_delay(100);
-      }
-      HAL_GPIO_WritePin(GPIOA, PIN_PWR_LATCH, 0);
-      sleep_delay(1000);
-      NVIC_SystemReset();
+
+  sleep_delay(2); // Some operations are short, branch off early
+
+  while (GPIOA->IDR & PIN_EP_BUSY) {
+    HAL_SuspendTick();
+    rtc_waiting_for = RTC_WAITING_FOR_EP_BUSY;
+    __HAL_PWR_CLEAR_FLAG(PWR_FLAG_WUF);
+    __HAL_RTC_WAKEUPTIMER_CLEAR_FLAG(&rtc, RTC_FLAG_WUTF);
+    // Around 10 seconds
+    HAL_RTCEx_SetWakeUpTimer_IT(&rtc, 10, RTC_WAKEUPCLOCK_CK_SPRE_16BITS);
+    stopped = true;
+
+    // If the busy pin is still actually high, enter Stop 1 mode
+    PWR->CR1 = (PWR->CR1 & ~PWR_CR1_LPMS) | PWR_CR1_LPMS_0;
+    if (GPIOA->IDR & PIN_EP_BUSY) {
+      SCB->SCR |= SCB_SCR_SLEEPDEEP_Msk;
+      __WFI();
+      SCB->SCR &= ~SCB_SCR_SLEEPDEEP_Msk;
     }
-    sleep_delay(1);
+
+    HAL_RTCEx_DeactivateWakeUpTimer(&rtc);
+    rtc_waiting_for = RTC_WAITING_FOR_NONE;
+    stopped = false;
+    HAL_ResumeTick();
+
+    // Debouncing, in case of spurious edges due to noise
+    sleep_delay(2);
+    // The loop condition does the re-check
   }
 }
 #pragma GCC pop_options
@@ -812,6 +833,7 @@ bool stop_wait_button(uint32_t min_dur, uint32_t max_dur)
 
     HAL_SuspendTick();
 
+    rtc_waiting_for = RTC_WAITING_FOR_BTN;
     __HAL_PWR_CLEAR_FLAG(PWR_FLAG_WUF);
     __HAL_RTC_WAKEUPTIMER_CLEAR_FLAG(&rtc, RTC_FLAG_WUTF);
     // 117 = 120 s * (32 kHz / (0x7F + 1) * (0xFF + 1))
@@ -825,6 +847,7 @@ bool stop_wait_button(uint32_t min_dur, uint32_t max_dur)
     EXTI->RTSR1 |=  EXTI_LINE_BUTTON; // Enable rising trigger
 
     HAL_RTCEx_DeactivateWakeUpTimer(&rtc);
+    rtc_waiting_for = RTC_WAITING_FOR_NONE;
 
     HAL_ResumeTick();
 
@@ -1436,10 +1459,21 @@ void RTC_TAMP_IRQHandler()
     .Pin = PIN_LED_R,
     .Mode = GPIO_MODE_OUTPUT_PP,
   });
-  for (int i = 0; ; i++) {
-    GPIOB->BSRR = PIN_LED_R <<  0; spin_delay(16000 * 40);
-    GPIOB->BSRR = PIN_LED_R << 16; spin_delay(16000 * 40);
-    if (i == 3) HAL_GPIO_WritePin(GPIOA, PIN_PWR_LATCH, 0);
+  if (rtc_waiting_for == RTC_WAITING_FOR_BTN) {
+    // Turn off
+    HAL_GPIO_WritePin(GPIOA, PIN_PWR_LATCH, 0);
+    // Indicate status when the debug probe is connected
+    for (int i = 0; ; i++) {
+      GPIOB->BSRR = PIN_LED_R << 16; spin_delay(16000 * 40);
+      GPIOB->BSRR = PIN_LED_R <<  0; spin_delay(16000 * 40);
+    }
+  } else if (rtc_waiting_for == RTC_WAITING_FOR_EP_BUSY) {
+    // EPD busy stays high, try system reset (most probably a soldering defect!)
+    for (int i = 0; i < 5; i++) {
+      GPIOB->BSRR = PIN_LED_R <<  0; spin_delay(16000 * 40);
+      GPIOB->BSRR = PIN_LED_R << 16; spin_delay(16000 * 40);
+    }
+    NVIC_SystemReset();
   }
 }
 
