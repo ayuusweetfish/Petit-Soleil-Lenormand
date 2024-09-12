@@ -477,6 +477,67 @@ static inline void spin_delay(uint32_t cycles)
   );
 }
 
+// Entropy from randomly initialised memory
+// Accumulators in registers, avoiding reflexive operations in the stack
+static void entropy_ram(uint32_t *pool)
+{
+  __asm__ (
+    "   ldr r1, =%[start_addr]\n" // r1 - Pointer
+    "   ldr r2, =%[end_addr]\n"   // r2 - End address
+
+    // r4-11 - Eight accumulator words
+    "   mov r4, #0\n"
+    "   mov r5, #0\n"
+    "   mov r6, #0\n"
+    "   mov r7, #0\n"
+    "   mov r8, r7\n"
+    "   mov r9, r7\n"
+    "   mov r10, r7\n"
+    "   mov r11, r7\n"
+
+    "1: \n"
+    // r3 - Load destination
+    "   ldr r3, [r1, #0]\n"
+    "   add r4, r3\n"
+    "   ldr r3, [r1, #4]\n"
+    "   add r5, r3\n"
+    "   ldr r3, [r1, #8]\n"
+    "   add r6, r3\n"
+    "   ldr r3, [r1, #12]\n"
+    "   add r7, r3\n"
+    "   ldr r3, [r1, #16]\n"
+    "   add r8, r3\n"
+    "   ldr r3, [r1, #20]\n"
+    "   add r9, r3\n"
+    "   ldr r3, [r1, #24]\n"
+    "   add r10, r3\n"
+    "   ldr r3, [r1, #28]\n"
+    "   add r11, r3\n"
+    "   add r1, #32\n"
+    "   cmp r1, r2\n"
+    "   bl  1b\n"
+
+    // Write to memory
+    "   str r4, [%[pool_addr], #0]\n"
+    "   str r5, [%[pool_addr], #4]\n"
+    "   str r6, [%[pool_addr], #8]\n"
+    "   str r7, [%[pool_addr], #12]\n"
+    "   mov r8, r4\n"
+    "   str r4, [%[pool_addr], #16]\n"
+    "   mov r9, r4\n"
+    "   str r4, [%[pool_addr], #20]\n"
+    "   mov r10, r4\n"
+    "   str r4, [%[pool_addr], #24]\n"
+    "   mov r11, r4\n"
+    "   str r4, [%[pool_addr], #28]\n"
+    :
+    : [start_addr] "i" (0x20000000),
+      [end_addr]   "i" (0x20002000),
+      [pool_addr]  "r" (pool)   // r0
+    : "r1", "r2", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11", "cc", "memory"
+  );
+}
+
 // Requires `n` to be even
 // Also mixes in TIM3, if it is enabled
 static inline void entropy_adc(uint32_t *out_v, int n)
@@ -670,14 +731,8 @@ void setup_clocks()
 
 int main()
 {
-  // Entropy from randomly initialised memory
-  uint64_t mem1 = 0, mem2 = 0, mem3 = 0, mem4 = 0;
-  for (uint64_t *p = (uint64_t *)0x20000000; p < (uint64_t *)0x20002000; p++) {
-    mem1 = mem1 ^ *p;
-    mem2 = (mem2 * 17) ^ ((uint64_t)(uint32_t)p + *p);
-    if (__builtin_parity((uint32_t)p)) mem4 += *p;
-    else mem3 += mem2;
-  }
+  uint32_t pool[20];
+  entropy_ram(pool);
 
   HAL_Init();
 
@@ -1053,30 +1108,20 @@ void sense_vri()
 #endif
 
   // ======== Entropy accumulation ========
-  uint32_t pool[20] = {
-    // RAM initialisation
-    (uint32_t)(mem1 >> 32),
-    (uint32_t)(mem1 >>  0),
-    (uint32_t)(mem2 >> 32),
-    (uint32_t)(mem2 >>  0),
-    (uint32_t)(mem3 >> 32),
-    (uint32_t)(mem3 >>  0),
-    (uint32_t)(mem4 >> 32),
-    (uint32_t)(mem4 >>  0),
-    // Device signature
-    *(uint32_t *)(UID_BASE + 0),
-    *(uint32_t *)(UID_BASE + 4),
-    *(uint32_t *)(UID_BASE + 8),
-    LL_RCC_HSI_GetCalibration(),
-    *TEMPSENSOR_CAL1_ADDR,
-    *TEMPSENSOR_CAL2_ADDR,
-    *VREFINT_CAL_ADDR,
-    0 | ((uint32_t)flash_uid[0] << 24) | ((uint32_t)flash_uid[1] << 16)
-      | ((uint32_t)flash_uid[2] <<  8) | ((uint32_t)flash_uid[3] <<  0),
-    // Voltages
-    adc_vrefint,
-    adc_vri,
-  };
+  // 0~7 initialised with RAM data, see start of `main()`
+  // Device signature
+  pool[ 8] ^= *(uint32_t *)(UID_BASE + 0);
+  pool[ 9] ^= *(uint32_t *)(UID_BASE + 4);
+  pool[10] ^= *(uint32_t *)(UID_BASE + 8);
+  pool[11] ^= LL_RCC_HSI_GetCalibration();
+  pool[12] ^= *TEMPSENSOR_CAL1_ADDR;
+  pool[13] ^= *TEMPSENSOR_CAL2_ADDR;
+  pool[14] ^= *VREFINT_CAL_ADDR;
+  pool[15] ^= 0 | ((uint32_t)flash_uid[0] << 24) | ((uint32_t)flash_uid[1] << 16)
+                | ((uint32_t)flash_uid[2] <<  8) | ((uint32_t)flash_uid[3] <<  0);
+  // Voltages
+  pool[16] ^= adc_vrefint;
+  pool[17] ^= adc_vri;
 
 while (0) {
   uint32_t t0 = HAL_GetTick();
