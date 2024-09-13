@@ -716,12 +716,6 @@ static inline void entropy_jitter(uint32_t *_s, int n)
 
 static inline void entropy_epd_ram(uint32_t *s, int n)
 {
-  HAL_GPIO_WritePin(GPIOA, PIN_EP_NRST, GPIO_PIN_RESET);
-  sleep_delay(10);
-  HAL_GPIO_WritePin(GPIOA, PIN_EP_NRST, GPIO_PIN_SET);
-  sleep_delay(10);
-  epd_waitbusy();
-
   // SW RESET
   epd_cmd(0x12);
   epd_waitbusy();
@@ -748,10 +742,16 @@ static inline void entropy_epd_ram(uint32_t *s, int n)
   HAL_GPIO_WritePin(GPIOA, PIN_EP_DCC, GPIO_PIN_RESET);
   spi_transmit(&cmd, 1);
   HAL_GPIO_WritePin(GPIOA, PIN_EP_DCC, GPIO_PIN_SET);
-  spi_receive((uint8_t *)ram, 1);
+  spi_receive((uint8_t *)ram, 1); // Dummy byte
   for (int i = 0; i < 32; i++) {
     spi_receive((uint8_t *)ram, n * 4);
     for (int j = 0; j < n; j++) s[j] += ram[j];
+
+    uint32_t sum = 0;
+    for (int j = 0; j < n; j++) sum |= ram[j];
+    if (sum == 0) {
+      swv_printf("Read all zeros\n");
+    }
   }
   HAL_GPIO_WritePin(GPIOA, PIN_EP_NCS, GPIO_PIN_SET);
 
@@ -1246,11 +1246,12 @@ while (0) {
   swv_printf("%u %u\n", t1 - t0, t2 - t1);  // 8~9 0~1
 }
 
-  entropy_epd_ram(pool + 12, 8);
-  // Deep sleep
-  epd_cmd(0x10, 0x01);
+  uint32_t n_cards = 0;
 
 redraw:
+  n_cards++;
+
+  pool[19] += n_cards;
   entropy_adc(pool + 10, 10);
   entropy_jitter(pool, 20);
   mix(pool, 20, 0);
@@ -1268,6 +1269,7 @@ redraw:
   uint32_t n_rounds = 0;
   uint32_t time_spent = 0;
   uint32_t last_sample = HAL_GetTick() - sample_interval;
+  uint32_t epd_state = 0;
   while (btn_released_at == 0 || HAL_GetTick() - btn_released_at < 2000) {
     uint32_t intensity = 65536 / 8;
     uint32_t t = HAL_GetTick() - started_at;
@@ -1290,6 +1292,21 @@ redraw:
       entropy_jitter(pool, 20);
       last_sample += 40;
       time_spent += (HAL_GetTick() - t0);
+    }
+    // EPD
+    if (n_cards == 1) {
+      if (epd_state == 0 && t >= 30) {
+        HAL_GPIO_WritePin(GPIOA, PIN_EP_NRST, GPIO_PIN_RESET);
+        epd_state = 1;
+      } else if (epd_state == 1 && t >= 50) {
+        HAL_GPIO_WritePin(GPIOA, PIN_EP_NRST, GPIO_PIN_SET);
+        epd_state = 2;
+      } else if (epd_state == 2 && t >= 70) {
+        epd_waitbusy();
+        entropy_epd_ram(pool + 12, 8);
+        epd_cmd(0x10, 0x01);  // Deep sleep
+        epd_state = 3;
+      }
     }
     sleep_delay(1);
   }
