@@ -149,7 +149,6 @@ static inline void epd_read(uint8_t cmd, uint8_t *out_buf, size_t out_buf_size)
 static inline void epd_waitbusy()
 {
   // Wait for PIN_EP_BUSY to go low
-  while (GPIOA->IDR & PIN_EP_BUSY) { } return;
 
   sleep_delay(2); // Some operations are short, branch off early
 
@@ -715,18 +714,19 @@ static inline void entropy_jitter(uint32_t *_s, int n)
 }
 #pragma GCC pop_options
 
-static inline void entropy_epd_ram(uint32_t *s)
+static inline void entropy_epd_ram(uint32_t *s, int n)
 {
   HAL_GPIO_WritePin(GPIOA, PIN_EP_NRST, GPIO_PIN_RESET);
   sleep_delay(10);
   HAL_GPIO_WritePin(GPIOA, PIN_EP_NRST, GPIO_PIN_SET);
   sleep_delay(10);
   epd_waitbusy();
+
   // SW RESET
   epd_cmd(0x12);
   epd_waitbusy();
 
-  static uint8_t ram[17] = { 0 };
+  uint32_t ram[n];
 
   // Set RAM X-address Start / End position
   epd_cmd(0x44, 0x00, 0x18);  // 0x18 = 200 / 8 - 1
@@ -743,16 +743,24 @@ static inline void entropy_epd_ram(uint32_t *s)
   spi1.Init.Direction = SPI_DIRECTION_1LINE;
   HAL_SPI_Init(&spi1);
 
-  epd_read(0x27, ram, 17);
+  uint8_t cmd = 0x27;
+  HAL_GPIO_WritePin(GPIOA, PIN_EP_NCS, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOA, PIN_EP_DCC, GPIO_PIN_RESET);
+  spi_transmit(&cmd, 1);
+  HAL_GPIO_WritePin(GPIOA, PIN_EP_DCC, GPIO_PIN_SET);
+  spi_receive((uint8_t *)ram, 1);
+  for (int i = 0; i < 32; i++) {
+    spi_receive((uint8_t *)ram, n * 4);
+    for (int j = 0; j < n; j++) s[j] += ram[j];
+  }
+  HAL_GPIO_WritePin(GPIOA, PIN_EP_NCS, GPIO_PIN_SET);
 
   HAL_SPI_DeInit(&spi1);
   spi1.Init.Direction = SPI_DIRECTION_2LINES;
   HAL_SPI_Init(&spi1);
 
   epd_cmd(0x7f);
-  for (int i = 1; i < 17; i++) swv_printf("%02x%c", ram[i], i == 16 ? '\n' : ' ');
-
-  while (1) { }
+  // for (int i = 0; i < n; i++) swv_printf("%08x%c", s[i], i == n - 1 ? '\n' : ' ');
 }
 
 #pragma GCC push_options
@@ -1085,8 +1093,6 @@ void sense_vri()
   HAL_SPI_Init(&spi1);
   __HAL_SPI_ENABLE(&spi1);
 
-  entropy_epd_ram(0);
-
   // Deep sleep
   epd_cmd(0x10, 0x01);
 
@@ -1239,6 +1245,10 @@ while (0) {
   uint32_t t2 = HAL_GetTick();
   swv_printf("%u %u\n", t1 - t0, t2 - t1);  // 8~9 0~1
 }
+
+  entropy_epd_ram(pool + 12, 8);
+  // Deep sleep
+  epd_cmd(0x10, 0x01);
 
 redraw:
   entropy_adc(pool + 10, 10);
