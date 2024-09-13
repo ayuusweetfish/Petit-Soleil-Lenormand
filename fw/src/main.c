@@ -635,38 +635,74 @@ while (0) {
   // while (1) { }
 }
 
+static uint32_t entropy_float_pin_1;
+
 #pragma GCC push_options
 #pragma GCC optimize("O3")
 static inline void entropy_float_pin(uint32_t *s, int n)
 {
+  entropy_float_pin_1 = 0;
+
   uint32_t moder_0 = GPIOA->MODER;
-  uint32_t moder_1 = (moder_0 & 0xf3ffffff) | 0x04000000;
+  uint32_t moder_1 = (moder_0 & 0xf3ffffff) | 0x04000000; // MODE13 = General purpose output mode
+  uint32_t moder_2 = (moder_0 & 0xf3ffffff) | 0x0c000000; // MODE13 = Analog mode
   uint32_t ospeedr_0 = GPIOA->OSPEEDR;
   GPIOA->OSPEEDR = (GPIOA->OSPEEDR & 0xf3ffffff) | 0x00000000;  // Lowest
   GPIOA->PUPDR = (GPIOA->PUPDR & 0xf3ffffff) | 0x00000000;      // No pull
-  GPIOA->ODR = (GPIOA->ODR & 0xffffdfff) | 0x00000000;          // Output 0
-  uint32_t addr_scratch;
-  __asm__ volatile (
-    "   ldr %[addr], =%[gpioa_moder]\n"
-    "   str %[moder_1], [%[addr]]\n"
-    "   str %[moder_0], [%[addr]]\n"
-    : [addr] "=&l" (addr_scratch)
-    : [moder_0] "l" (moder_0),
-      [moder_1] "l" (moder_1),
-      [gpioa_moder] "i" (&GPIOA->MODER)
-    : "memory"
-  );
-  GPIOA->OSPEEDR = ospeedr_0;
 
   HAL_ADC_ConfigChannel(&adc1, &(ADC_ChannelConfTypeDef){
-    .Channel = ADC_CHANNEL_VREFINT,
+    .Channel = ADC_CHANNEL_17,
     .Rank = ADC_REGULAR_RANK_1,
     .SamplingTime = ADC_SAMPLETIME_1CYCLE_5,
   });
-  HAL_ADC_Start(&adc1);
-  HAL_ADC_PollForConversion(&adc1, 1000);
-  s[0] = HAL_ADC_GetValue(&adc1);
+
+  for (int i = 0; i < n * 4; i++) {
+    // Output low in even-numbered iterations, high in odd-numbered ones
+if (0) {
+    GPIOA->BSRR = (i % 2 == 0 ? (1 << 29) : (1 << 13));
+
+    uint32_t addr_scratch;
+    __asm__ volatile (
+      "   ldr %[addr], =%[gpioa_moder]\n"
+      "   str %[moder_1], [%[addr]]\n"
+      "   str %[moder_0], [%[addr]]\n"
+      : [addr] "=&l" (addr_scratch)
+      : [moder_0] "l" (moder_0),
+        [moder_1] "l" (moder_1),
+        [gpioa_moder] "i" (&GPIOA->MODER)
+      : "memory"
+    );
+
+    GPIOA->MODER = moder_2;
+}
+
+    // FIXME: Even with this 0/1 output, ADC always returns 0xfff
+    // (IDR reads correct when configured to input mode)
+    HAL_GPIO_Init(GPIOA, &(GPIO_InitTypeDef){
+      .Pin = GPIO_PIN_13,
+      .Mode = GPIO_MODE_OUTPUT_PP,
+      .Pull = GPIO_NOPULL,
+    });
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_13, 0);
+    spin_delay(1000);
+    HAL_GPIO_Init(GPIOA, &(GPIO_InitTypeDef){
+      .Pin = GPIO_PIN_13,
+      .Mode = GPIO_MODE_ANALOG,
+      .Pull = GPIO_NOPULL,
+    });
+
+    HAL_ADC_Start(&adc1);
+    HAL_ADC_PollForConversion(&adc1, 1000);
+    uint32_t value = ((HAL_ADC_GetValue(&adc1) << 4) | HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_13)) & 0xffff;
+    s[i / 4] ^= (value << (i % 4 * 5));
+
+    if (i == 0) entropy_float_pin_1 = 0;
+    if (i <= 1) entropy_float_pin_1 = (entropy_float_pin_1 << 16) | value;
+  }
   HAL_ADC_Stop(&adc1);
+
+  GPIOA->MODER = moder_0;
+  GPIOA->OSPEEDR = ospeedr_0;
 }
 #pragma GCC pop_options
 
@@ -1082,9 +1118,6 @@ void sense_vri()
 }
   sense_vri();
 
-  entropy_float_pin(pool, 20);
-  uint32_t float_pin_entropy = pool[0];
-
   // ======== SPI ========
   // GPIO ports
   // SPI1_SCK (PA5), SPI1_MISO (PA6), SPI1_MOSI (PA7)
@@ -1325,6 +1358,7 @@ redraw:
       uint32_t t0 = HAL_GetTick();
       entropy_adc(pool, 20);
       entropy_jitter(pool, 20);
+      entropy_float_pin(pool, 20);
       pool[0] ^= btn_entropy;
       mix(pool, 20, ++n_rounds);
       entropy_jitter(pool, 20);
@@ -1367,9 +1401,9 @@ if (1) {
   __attribute__ ((section (".noinit")))
   static uint8_t pixels[200 * 200 / 8];
 
+  // Will be read later in `display_image()`, as flash IC is powered down now
   uint8_t side;
-  flash_read(FILE_ADDR___cards_bin + card_id * 13001 + 10000, &side, 1);
-  int offs = (side == 0 ? 0 : 200 / 8 * 160);
+  int offs;
 
 // For inspection
 if (0) {
@@ -1392,6 +1426,12 @@ if (stage == -1) {
   epd_display(false);
 
 } else if (stage == 0 || stage == 3) {
+  if (stage == 0) {
+    // Read side number
+    flash_read(FILE_ADDR___cards_bin + card_id * 13001 + 10000, &side, 1);
+    offs = (side == 0 ? 0 : 200 / 8 * 160);
+  }
+
   if (stage == 0)
     epd_reset(false, false && vri_mV < 2400);
     // XXX: Power-save mode results in dimmed shadows (which is preferred)
@@ -1487,7 +1527,7 @@ if (stage == -1) {
   btn_entropy_str[9] = '0' + side;
   btn_entropy_str[10] = ' ';
   for (int i = 0; i < 8; i++)
-    btn_entropy_str[i + 11] = "0123456789abcdef"[(float_pin_entropy >> ((7 - i) * 4)) % 16];
+    btn_entropy_str[i + 11] = "0123456789abcdef"[(entropy_float_pin_1 >> ((7 - i) * 4)) % 16];
   print_string(pixels, btn_entropy_str, 139, 3);
 
   for (int i = 0; i < 200 * 200 / 8; i++) pixels[i] ^= 0xff;
