@@ -635,6 +635,41 @@ while (0) {
   // while (1) { }
 }
 
+#pragma GCC push_options
+#pragma GCC optimize("O3")
+static inline void entropy_float_pin(uint32_t *s, int n)
+{
+  uint32_t moder_0 = GPIOA->MODER;
+  uint32_t moder_1 = (moder_0 & 0xf3ffffff) | 0x04000000;
+  uint32_t ospeedr_0 = GPIOA->OSPEEDR;
+  GPIOA->OSPEEDR = (GPIOA->OSPEEDR & 0xf3ffffff) | 0x00000000;  // Lowest
+  GPIOA->PUPDR = (GPIOA->PUPDR & 0xf3ffffff) | 0x00000000;      // No pull
+  GPIOA->ODR = (GPIOA->ODR & 0xffffdfff) | 0x00000000;          // Output 0
+  uint32_t addr_scratch;
+  __asm__ volatile (
+    "   ldr %[addr], =%[gpioa_moder]\n"
+    "   str %[moder_1], [%[addr]]\n"
+    "   str %[moder_0], [%[addr]]\n"
+    : [addr] "=&l" (addr_scratch)
+    : [moder_0] "l" (moder_0),
+      [moder_1] "l" (moder_1),
+      [gpioa_moder] "i" (&GPIOA->MODER)
+    : "memory"
+  );
+  GPIOA->OSPEEDR = ospeedr_0;
+
+  HAL_ADC_ConfigChannel(&adc1, &(ADC_ChannelConfTypeDef){
+    .Channel = ADC_CHANNEL_VREFINT,
+    .Rank = ADC_REGULAR_RANK_1,
+    .SamplingTime = ADC_SAMPLETIME_1CYCLE_5,
+  });
+  HAL_ADC_Start(&adc1);
+  HAL_ADC_PollForConversion(&adc1, 1000);
+  s[0] = HAL_ADC_GetValue(&adc1);
+  HAL_ADC_Stop(&adc1);
+}
+#pragma GCC pop_options
+
 static inline void entropy_clocks_start()
 {
   HAL_RCC_OscConfig(&(RCC_OscInitTypeDef){
@@ -1047,6 +1082,9 @@ void sense_vri()
 }
   sense_vri();
 
+  entropy_float_pin(pool, 20);
+  uint32_t float_pin_entropy = pool[0];
+
   // ======== SPI ========
   // GPIO ports
   // SPI1_SCK (PA5), SPI1_MISO (PA6), SPI1_MOSI (PA7)
@@ -1442,9 +1480,14 @@ if (stage == -1) {
     time_str[i] = '0' + n % 10;
   print_string(pixels, time_str, 122, 3);
 
-  uint16_t btn_entropy_str[9] = { 0 };
+  uint16_t btn_entropy_str[20] = { 0 };
   for (int i = 0; i < 8; i++)
     btn_entropy_str[i] = "0123456789abcdef"[(pool[0] >> ((7 - i) * 4)) % 16];
+  btn_entropy_str[8] = ' ';
+  btn_entropy_str[9] = '0' + side;
+  btn_entropy_str[10] = ' ';
+  for (int i = 0; i < 8; i++)
+    btn_entropy_str[i + 11] = "0123456789abcdef"[(float_pin_entropy >> ((7 - i) * 4)) % 16];
   print_string(pixels, btn_entropy_str, 139, 3);
 
   for (int i = 0; i < 200 * 200 / 8; i++) pixels[i] ^= 0xff;
