@@ -675,14 +675,27 @@ static inline void entropy_float_pin(uint32_t *s, int n)
     GPIOA->MODER = moder_2;
 
     HAL_ADC_Start(&adc1);
-    HAL_ADC_PollForConversion(&adc1, 1000);
-    uint32_t value = HAL_ADC_GetValue(&adc1);
+  /*
+    if (ADC1->CR == 0x0) {
+      ADC1->CR = ADC_CR_ADEN;
+      while (!(ADC1->ISR & ADC_ISR_ADRDY)) { }
+    }
+    ADC1->ISR = (ADC_ISR_EOC | ADC_ISR_EOS | ADC_ISR_OVR);  // All bits of ADC_ISR are r/cw1
+    ADC1->CR = ADC_CR_ADSTART;  // All bits of ADC_CR are r/s
+  */
+    // HAL_ADC_PollForConversion(&adc1, 1000);
+    while (!(ADC1->ISR & ADC_FLAG_EOC)) { }
+    uint32_t value = ADC1->DR;
     s[i / 4] ^= (value << (i % 4 * 5));
 
     if (i == 0) entropy_float_pin_1 = 0;
     if (i <= 1) entropy_float_pin_1 = (entropy_float_pin_1 << 16) | value;
   }
   HAL_ADC_Stop(&adc1);
+/*
+  ADC1->CR = ADC_CR_ADSTP;
+  while (ADC1->CR & ADC_CR_ADSTART) { }
+*/
 
   GPIOA->MODER = moder_0;
   GPIOA->OSPEEDR = ospeedr_0;
@@ -1318,7 +1331,7 @@ redraw:
   magical_intensity = 0;
   __HAL_RCC_TIM3_CLK_ENABLE();
 
-  // swv_printf("tick = %u\n", HAL_GetTick()); // tick = 13
+  swv_printf("tick = %u\n", HAL_GetTick()); // tick = 18
 
   // ======== Accumulate entropy while the magical lights flash! ========
   const uint32_t sample_interval = 40;
