@@ -135,9 +135,21 @@ static inline void _epd_cmd(uint8_t cmd, const uint8_t *params, size_t params_si
   uint8_t params[] = { __VA_ARGS__ }; \
   _epd_cmd(_cmd, params, sizeof params); \
 } while (0)
+
+static inline void epd_read(uint8_t cmd, uint8_t *out_buf, size_t out_buf_size)
+{
+  HAL_GPIO_WritePin(GPIOA, PIN_EP_NCS, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOA, PIN_EP_DCC, GPIO_PIN_RESET);
+  spi_transmit(&cmd, 1);
+  HAL_GPIO_WritePin(GPIOA, PIN_EP_DCC, GPIO_PIN_SET);
+  spi_receive(out_buf, out_buf_size);
+  HAL_GPIO_WritePin(GPIOA, PIN_EP_NCS, GPIO_PIN_SET);
+}
+
 static inline void epd_waitbusy()
 {
   // Wait for PIN_EP_BUSY to go low
+  while (GPIOA->IDR & PIN_EP_BUSY) { } return;
 
   sleep_delay(2); // Some operations are short, branch off early
 
@@ -237,6 +249,7 @@ static void epd_reset(bool partial, bool power_save)
 
   // Set RAM X-address Start / End position
   epd_cmd(0x44, 0x00, 0x18);  // 0x18 = 200 / 8 - 1
+  // Set RAM Y-address Start / End position
   epd_cmd(0x45, 0xC7, 0x00, 0x00, 0x00);  // 0xC7 = 200 - 1
   // Set starting RAM location
   epd_cmd(0x4E, 0x00);
@@ -700,7 +713,50 @@ static inline void entropy_jitter(uint32_t *_s, int n)
     acc += s[i];
   }
 }
+#pragma GCC pop_options
 
+static inline void entropy_epd_ram(uint32_t *s)
+{
+  HAL_GPIO_WritePin(GPIOA, PIN_EP_NRST, GPIO_PIN_RESET);
+  sleep_delay(10);
+  HAL_GPIO_WritePin(GPIOA, PIN_EP_NRST, GPIO_PIN_SET);
+  sleep_delay(10);
+  epd_waitbusy();
+  // SW RESET
+  epd_cmd(0x12);
+  epd_waitbusy();
+
+  static uint8_t ram[17] = { 0 };
+
+  // Set RAM X-address Start / End position
+  epd_cmd(0x44, 0x00, 0x18);  // 0x18 = 200 / 8 - 1
+  // Set RAM Y-address Start / End position
+  epd_cmd(0x45, 0xC7, 0x00, 0x00, 0x00);  // 0xC7 = 200 - 1
+  // Set starting RAM location
+  epd_cmd(0x4E, 0x00);
+  epd_cmd(0x4F, 0xC7, 0x00);
+
+  // XXX: For some reason, writing commands in 1-line (bidirectional) mode
+  // results in incorrect timing (sometimes BUSY high, read all zeros). Maybe noise/defects?
+  // To be investigated
+  HAL_SPI_DeInit(&spi1);
+  spi1.Init.Direction = SPI_DIRECTION_1LINE;
+  HAL_SPI_Init(&spi1);
+
+  epd_read(0x27, ram, 17);
+
+  HAL_SPI_DeInit(&spi1);
+  spi1.Init.Direction = SPI_DIRECTION_2LINES;
+  HAL_SPI_Init(&spi1);
+
+  epd_cmd(0x7f);
+  for (int i = 1; i < 17; i++) swv_printf("%02x%c", ram[i], i == 16 ? '\n' : ' ');
+
+  while (1) { }
+}
+
+#pragma GCC push_options
+#pragma GCC optimize("O3")
 static inline void mix(uint32_t *pool, uint32_t n, uint32_t n_round)
 {
   static const uint32_t xoodoo_rc[12] = {
@@ -1028,6 +1084,8 @@ void sense_vri()
   spi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_2;  // APB / 2 = 2 MHz
   HAL_SPI_Init(&spi1);
   __HAL_SPI_ENABLE(&spi1);
+
+  entropy_epd_ram(0);
 
   // Deep sleep
   epd_cmd(0x10, 0x01);
