@@ -658,7 +658,6 @@ static inline void entropy_float_pin(uint32_t *s, int n)
 
   for (int i = 0; i < n * 4; i++) {
     // Output low in even-numbered iterations, high in odd-numbered ones
-if (0) {
     GPIOA->BSRR = (i % 2 == 0 ? (1 << 29) : (1 << 13));
 
     uint32_t addr_scratch;
@@ -674,26 +673,10 @@ if (0) {
     );
 
     GPIOA->MODER = moder_2;
-}
-
-    // FIXME: Even with this 0/1 output, ADC always returns 0xfff
-    // (IDR reads correct when configured to input mode)
-    HAL_GPIO_Init(GPIOA, &(GPIO_InitTypeDef){
-      .Pin = GPIO_PIN_13,
-      .Mode = GPIO_MODE_OUTPUT_PP,
-      .Pull = GPIO_NOPULL,
-    });
-    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_13, 0);
-    spin_delay(1000);
-    HAL_GPIO_Init(GPIOA, &(GPIO_InitTypeDef){
-      .Pin = GPIO_PIN_13,
-      .Mode = GPIO_MODE_ANALOG,
-      .Pull = GPIO_NOPULL,
-    });
 
     HAL_ADC_Start(&adc1);
     HAL_ADC_PollForConversion(&adc1, 1000);
-    uint32_t value = ((HAL_ADC_GetValue(&adc1) << 4) | HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_13)) & 0xffff;
+    uint32_t value = HAL_ADC_GetValue(&adc1);
     s[i / 4] ^= (value << (i % 4 * 5));
 
     if (i == 0) entropy_float_pin_1 = 0;
@@ -1118,6 +1101,8 @@ void sense_vri()
 }
   sense_vri();
 
+  entropy_float_pin(pool, 20);
+
   // ======== SPI ========
   // GPIO ports
   // SPI1_SCK (PA5), SPI1_MISO (PA6), SPI1_MOSI (PA7)
@@ -1138,6 +1123,8 @@ void sense_vri()
   gpio_init.Pin = PIN_EP_NCS | PIN_EP_DCC;
   gpio_init.Mode = GPIO_MODE_OUTPUT_PP;
   gpio_init.Pull = GPIO_NOPULL;
+  // XXX: After this line, `entropy_float_pin()` yields zero
+  // Soldering defect?
   HAL_GPIO_Init(GPIOA, &gpio_init);
   HAL_GPIO_WritePin(GPIOA, PIN_EP_NCS, 1);
   // while (HAL_GPIO_ReadPin(GPIOA, PIN_EP_NCS) == 0) { }
@@ -1358,7 +1345,7 @@ redraw:
       uint32_t t0 = HAL_GetTick();
       entropy_adc(pool, 20);
       entropy_jitter(pool, 20);
-      entropy_float_pin(pool, 20);
+      // entropy_float_pin(pool, 20);
       pool[0] ^= btn_entropy;
       mix(pool, 20, ++n_rounds);
       entropy_jitter(pool, 20);
