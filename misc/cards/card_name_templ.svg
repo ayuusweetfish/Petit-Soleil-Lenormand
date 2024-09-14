@@ -10,26 +10,26 @@
    xmlns="http://www.w3.org/2000/svg"
    xmlns:svg="http://www.w3.org/2000/svg"><defs
      id="defs2"><rect
-       x="4"
-       y="13"
+       x="{CTX}"
+       y="{CTY}"
        width="30"
        height="18"
        id="text-rect-1" /><rect
-       x="39"
-       y="13.7"
+       x="{TTX}"
+       y="{TTY}"
        width="160"
        height="28"
        id="text-rect-2" /></defs>
      <circle
        style="fill:#ffffff;fill-opacity:1;stroke:#ffffff;stroke-width:6;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:none;stroke-opacity:1"
        id="circle-inner"
-       cx="19"
-       cy="21.5"
+       cx="{CX}"
+       cy="{CY}"
        r="14.5" /><circle
        style="opacity:1;fill:none;stroke:#000000;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:none"
        id="circle-outer"
-       cx="19"
-       cy="21.5"
+       cx="{CX}"
+       cy="{CY}"
        r="14.5" /><text
        xml:space="preserve"
        id="num"
@@ -40,14 +40,14 @@
            >{N}</tspan></text><text
        xml:space="preserve"
        id="tename-inner"
-       style="font-size:21px;line-height:100%;font-family:Mali;-inkscape-font-specification:Mali;text-align:start;white-space:pre;shape-inside:url(#text-rect-2);display:inline;fill:#ffffff;fill-opacity:1;stroke:#fefefe;stroke-width:6;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:none;stroke-opacity:1"
+       style="font-size:21px;line-height:100%;font-family:Mali;-inkscape-font-specification:Mali;text-align:{A};white-space:pre;shape-inside:url(#text-rect-2);display:inline;fill:#ffffff;fill-opacity:1;stroke:#fefefe;stroke-width:6;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:none;stroke-opacity:1"
        x="0"
        y="0"><tspan
            style="font-weight:bold;-inkscape-font-specification:'Mali Bold'"
            >{T}</tspan></text><text
        xml:space="preserve"
        id="name-outer"
-       style="font-size:21px;line-height:100%;font-family:Mali;-inkscape-font-specification:Mali;text-align:start;white-space:pre;shape-inside:url(#text-rect-2);display:inline;fill:#000000;stroke:#000000;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:none"
+       style="font-size:21px;line-height:100%;font-family:Mali;-inkscape-font-specification:Mali;text-align:{A};white-space:pre;shape-inside:url(#text-rect-2);display:inline;fill:#000000;stroke:#000000;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:none"
        x="0"
        y="0"><tspan
            style="font-weight:bold;-inkscape-font-specification:'Mali Bold';fill:#000000;stroke:none"

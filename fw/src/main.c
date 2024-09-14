@@ -1412,7 +1412,7 @@ if (stage == -1) {
   if (stage == 0) {
     // Read side number
     flash_read(FILE_ADDR___cards_bin + card_id * 13001 + 10000, &side, 1);
-    offs = (side == 0 ? 0 : 200 / 8 * 160);
+    offs = (side <= 1 ? 200 / 8 * 160 : 0);
   }
 
   if (stage == 0)
@@ -1482,7 +1482,7 @@ if (stage == -1) {
   flash_read(FILE_ADDR___cards_bin + card_id * 13001 + 12001, (uint8_t *)cmt_text, 80);
   for (int i = 0; i < 39; i++) cmt_text[i] = __builtin_bswap16(cmt_text[i]);
   cmt_text[39] = 0;
-  print_string(pixels, cmt_text, 3 + (side == 0 ? 40 : 0), 3);
+  print_string(pixels, cmt_text, 3 + (side <= 1 ? 0 : 40), 3);
 
   // Print string
   uint16_t voltage_str[] = {'0', '.', '0', '0', '0', ' ', 'V', '\0'};
