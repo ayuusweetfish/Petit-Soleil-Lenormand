@@ -620,18 +620,18 @@ static inline void entropy_adc(uint32_t *out_v, int n)
   adc_ch_temp.Rank = ADC_REGULAR_RANK_1;
   adc_ch_temp.SamplingTime = ADC_SAMPLETIME_1CYCLE_5;
 
-  // 1000 samples takes 167 ms
+  // 1000 samples takes 25 ms
 while (0) {
   HAL_ADC_ConfigChannel(&adc1, &adc_ch13);
   uint32_t t0 = HAL_GetTick();
+  uint32_t v;
   for (int i = 0; i < 1000; i++) {
-    HAL_ADC_Start(&adc1);
-    HAL_ADC_PollForConversion(&adc1, 1000);
-    HAL_ADC_GetValue(&adc1);
-    HAL_ADC_Stop(&adc1);
+    adc_start();
+    v = adc_poll_value();
   }
+  adc_stop();
   uint32_t t1 = HAL_GetTick();
-  swv_printf("%u - %u\n", t0, t1 - t0);
+  swv_printf("%u, %u\n", v, t1 - t0);
 }
 
   // for (int i = 0; i < n; i++) out_v[i] = 0;
@@ -641,16 +641,15 @@ while (0) {
     else HAL_ADC_ConfigChannel(&adc1, &adc_ch_temp);
     uint32_t v = 0;
     for (int i = 0; i < n * 2; i++) {
-      HAL_ADC_Start(&adc1);
-      HAL_ADC_PollForConversion(&adc1, 1000);
-      uint32_t adc_value = HAL_ADC_GetValue(&adc1);
+      adc_start();
+      uint32_t adc_value = adc_poll_value();
       // ADC has independent clock, but TIM3 lowest bit does not seem to change (stays at 1)?
       uint32_t tim_cnt = (TIM3->CNT >> 1) ^ (TIM16->CCR1 << 4);
       v = (v << 8) | ((adc_value ^ (tim_cnt << 2) ^ (tim_cnt >> 2)) & 0xff);
       if (i % 4 == 3) out_v[i / 4 * 2 + ch] ^= v;
     }
   }
-  HAL_ADC_Stop(&adc1);
+  adc_stop();
 
   // for (int i = 0; i < n; i++) swv_printf("%08x%c", out_v[i], i % 10 == 9 ? '\n' : ' ');
   // while (1) { }
@@ -1098,20 +1097,18 @@ void sense_vri()
   adc_ch13.Rank = ADC_REGULAR_RANK_1;
   adc_ch13.SamplingTime = ADC_SAMPLETIME_79CYCLES_5; // Stablize
   HAL_ADC_ConfigChannel(&adc1, &adc_ch13);
-  HAL_ADC_Start(&adc1);
-  HAL_ADC_PollForConversion(&adc1, 1000);
-  adc_vrefint = HAL_ADC_GetValue(&adc1);
-  HAL_ADC_Stop(&adc1);
+  adc_start();
+  adc_vrefint = adc_poll_value();
+  adc_stop();
 
   ADC_ChannelConfTypeDef adc_ch0;
   adc_ch0.Channel = ADC_CHANNEL_0;
   adc_ch0.Rank = ADC_REGULAR_RANK_1;
   adc_ch0.SamplingTime = ADC_SAMPLETIME_79CYCLES_5; // Stablize
   HAL_ADC_ConfigChannel(&adc1, &adc_ch0);
-  HAL_ADC_Start(&adc1);
-  HAL_ADC_PollForConversion(&adc1, 1000);
-  adc_vri = HAL_ADC_GetValue(&adc1);
-  HAL_ADC_Stop(&adc1);
+  adc_start();
+  adc_vri = adc_poll_value();
+  adc_stop();
   // Sample:
   // VREFINT cal = 1656, VREFINT read = 1542, VRI read = 3813
   // -> VDD = 1656/1542 * 3 V = 3.22 V
@@ -1338,7 +1335,7 @@ redraw:
   magical_intensity = 0;
   __HAL_RCC_TIM3_CLK_ENABLE();
 
-  swv_printf("tick = %u\n", HAL_GetTick()); // tick = 16
+  swv_printf("tick = %u\n", HAL_GetTick()); // tick = 13
 
   // ======== Accumulate entropy while the magical lights flash! ========
   const uint32_t sample_interval = 40;
@@ -1369,7 +1366,7 @@ redraw:
       pool[0] ^= btn_entropy;
       mix(pool, 20, ++n_rounds);
       entropy_jitter(pool, 20);
-      last_sample += 40;
+      last_sample += 25;
       time_spent += (HAL_GetTick() - t0);
     }
     // EPD
