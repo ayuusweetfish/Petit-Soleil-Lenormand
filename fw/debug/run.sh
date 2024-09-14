@@ -13,6 +13,9 @@ elif [ "$1" == "s" ]; then  # serve
 elif [ "$1" == "r" ]; then  # serve, reset
   ~/.platformio/packages/tool-openocd/bin/openocd -f interface/cmsis-dap.cfg -f target/stm32g0x.cfg -c 'adapter speed 32000; init; reset'
   exit
+elif [ "$1" == "t" ]; then  # serve, stop
+  ~/.platformio/packages/tool-openocd/bin/openocd -f interface/cmsis-dap.cfg -f target/stm32g0x.cfg -c 'adapter speed 32000; init; halt'
+  exit
 elif [ "$1" == "d" ]; then  # disassembly
   ~/.platformio/packages/toolchain-gccarmnoneeabi/bin/arm-none-eabi-objdump -S -d .pio/build/dev/firmware.elf
   exit
