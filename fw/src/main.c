@@ -610,35 +610,19 @@ static inline void adc_stop()
 // Also mixes in TIM3, if it is enabled
 static inline void entropy_adc(uint32_t *out_v, int n)
 {
-  ADC_ChannelConfTypeDef adc_ch13;
-  adc_ch13.Channel = ADC_CHANNEL_VREFINT;
-  adc_ch13.Rank = ADC_REGULAR_RANK_1;
-  adc_ch13.SamplingTime = ADC_SAMPLETIME_1CYCLE_5;
-
-  ADC_ChannelConfTypeDef adc_ch_temp;
-  adc_ch_temp.Channel = ADC_CHANNEL_TEMPSENSOR;
-  adc_ch_temp.Rank = ADC_REGULAR_RANK_1;
-  adc_ch_temp.SamplingTime = ADC_SAMPLETIME_1CYCLE_5;
-
-  // 1000 samples takes 25 ms
-while (0) {
-  HAL_ADC_ConfigChannel(&adc1, &adc_ch13);
-  uint32_t t0 = HAL_GetTick();
-  uint32_t v;
-  for (int i = 0; i < 1000; i++) {
-    adc_start();
-    v = adc_poll_value();
-  }
-  adc_stop();
-  uint32_t t1 = HAL_GetTick();
-  swv_printf("%u, %u\n", v, t1 - t0);
-}
-
   // for (int i = 0; i < n; i++) out_v[i] = 0;
 
   for (int ch = 0; ch <= 1; ch++) {
-    if (ch == 0) HAL_ADC_ConfigChannel(&adc1, &adc_ch13);
-    else HAL_ADC_ConfigChannel(&adc1, &adc_ch_temp);
+    ADC1->SMPR = 0b000; // 1.5 cycles
+    // ch == 0: Channel 13 (VREFINT)
+    // ch == 1: Channel 12 (TEMPSENSOR)
+    if (ch == 0) {
+      ADC1_COMMON->CCR |= ADC_CCR_VREFEN;
+      ADC1->CHSELR = (1 << 13);
+    } else {
+      ADC1_COMMON->CCR |= ADC_CCR_TSEN;
+      ADC1->CHSELR = (1 << 12);
+    }
     uint32_t v = 0;
     for (int i = 0; i < n * 2; i++) {
       adc_start();
@@ -647,6 +631,11 @@ while (0) {
       uint32_t tim_cnt = (TIM3->CNT >> 1) ^ (TIM16->CCR1 << 4);
       v = (v << 8) | ((adc_value ^ (tim_cnt << 2) ^ (tim_cnt >> 2)) & 0xff);
       if (i % 4 == 3) out_v[i / 4 * 2 + ch] ^= v;
+    }
+    if (ch == 0) {
+      ADC1_COMMON->CCR &= ~ADC_CCR_VREFEN;
+    } else {
+      ADC1_COMMON->CCR &= ~ADC_CCR_TSEN;
     }
   }
   adc_stop();
@@ -667,14 +656,11 @@ static inline void entropy_float_pin(uint32_t *s, int n)
   uint32_t moder_1 = (moder_0 & 0xf3ffffff) | 0x04000000; // MODE13 = General purpose output mode
   uint32_t moder_2 = (moder_0 & 0xf3ffffff) | 0x0c000000; // MODE13 = Analog mode
   uint32_t ospeedr_0 = GPIOA->OSPEEDR;
-  GPIOA->OSPEEDR = (GPIOA->OSPEEDR & 0xf3ffffff) | 0x00000000;  // Lowest
-  GPIOA->PUPDR = (GPIOA->PUPDR & 0xf3ffffff) | 0x00000000;      // No pull
+  GPIOA->OSPEEDR = (GPIOA->OSPEEDR & 0xf3ffffff) | 0x00000000;  // OSPEED13 = Lowest
+  GPIOA->PUPDR = (GPIOA->PUPDR & 0xf3ffffff) | 0x00000000;      // PUPD13 = No pull
 
-  HAL_ADC_ConfigChannel(&adc1, &(ADC_ChannelConfTypeDef){
-    .Channel = ADC_CHANNEL_17,
-    .Rank = ADC_REGULAR_RANK_1,
-    .SamplingTime = ADC_SAMPLETIME_1CYCLE_5,
-  });
+  ADC1->SMPR = 0b000;
+  ADC1->CHSELR = (1 << 17);
 
   for (int i = 0; i < n * 4; i++) {
     // Output low in even-numbered iterations, high in odd-numbered ones
@@ -696,10 +682,10 @@ static inline void entropy_float_pin(uint32_t *s, int n)
 
     adc_start();
     uint32_t value = adc_poll_value();
-    s[i / 4] ^= (value << (i % 4 * 5));
+    s[i / 4] ^= (value << (i % 4 * 7));
 
     if (i == 0) entropy_float_pin_1 = 0;
-    if (i <= 1) entropy_float_pin_1 = (entropy_float_pin_1 << 16) | value;
+    if (i < 4) entropy_float_pin_1 ^= (value << (i % 4 * 7));
   }
   adc_stop();
 
@@ -1070,7 +1056,7 @@ bool stop_wait_button(uint32_t min_dur, uint32_t max_dur)
   adc1.Init.ClockPrescaler = ADC_CLOCK_ASYNC_DIV1;
   adc1.Init.Resolution = ADC_RESOLUTION_12B;
   adc1.Init.DataAlign = ADC_DATAALIGN_RIGHT;
-  adc1.Init.ScanConvMode = ADC_SCAN_DISABLE;
+  adc1.Init.ScanConvMode = ADC_SCAN_SEQ_FIXED;
   adc1.Init.EOCSelection = ADC_EOC_SINGLE_CONV;
   adc1.Init.LowPowerAutoWait = DISABLE;
   adc1.Init.LowPowerAutoPowerOff = ENABLE;
@@ -1092,20 +1078,16 @@ bool stop_wait_button(uint32_t min_dur, uint32_t max_dur)
 
 void sense_vri()
 {
-  ADC_ChannelConfTypeDef adc_ch13;
-  adc_ch13.Channel = ADC_CHANNEL_VREFINT;
-  adc_ch13.Rank = ADC_REGULAR_RANK_1;
-  adc_ch13.SamplingTime = ADC_SAMPLETIME_79CYCLES_5; // Stablize
-  HAL_ADC_ConfigChannel(&adc1, &adc_ch13);
+  ADC1->SMPR = 0b110; // 79.5 cycles
+
+  ADC1_COMMON->CCR |= ADC_CCR_VREFEN;
+  ADC1->CHSELR = (1 << 13);
   adc_start();
   adc_vrefint = adc_poll_value();
   adc_stop();
+  ADC1_COMMON->CCR &= ~ADC_CCR_VREFEN;
 
-  ADC_ChannelConfTypeDef adc_ch0;
-  adc_ch0.Channel = ADC_CHANNEL_0;
-  adc_ch0.Rank = ADC_REGULAR_RANK_1;
-  adc_ch0.SamplingTime = ADC_SAMPLETIME_79CYCLES_5; // Stablize
-  HAL_ADC_ConfigChannel(&adc1, &adc_ch0);
+  ADC1->CHSELR = (1 << 0);
   adc_start();
   adc_vri = adc_poll_value();
   adc_stop();
@@ -1117,8 +1099,6 @@ void sense_vri()
   vri_mV = (uint32_t)(3000ULL * adc_vri * (*VREFINT_CAL_ADDR) / (4095 * adc_vrefint));
 }
   sense_vri();
-
-  entropy_float_pin(pool, 20);
 
   // ======== SPI ========
   // GPIO ports
@@ -1140,8 +1120,6 @@ void sense_vri()
   gpio_init.Pin = PIN_EP_NCS | PIN_EP_DCC;
   gpio_init.Mode = GPIO_MODE_OUTPUT_PP;
   gpio_init.Pull = GPIO_NOPULL;
-  // XXX: After this line, `entropy_float_pin()` yields zero
-  // Soldering defect?
   HAL_GPIO_Init(GPIOA, &gpio_init);
   HAL_GPIO_WritePin(GPIOA, PIN_EP_NCS, 1);
   // while (HAL_GPIO_ReadPin(GPIOA, PIN_EP_NCS) == 0) { }
@@ -1327,6 +1305,7 @@ redraw:
   n_cards++;
 
   pool[19] += n_cards;
+  entropy_float_pin(pool, 10);
   entropy_adc(pool + 10, 10);
   entropy_jitter(pool, 20);
   mix(pool, 20, 0);
@@ -1361,8 +1340,8 @@ redraw:
     if (HAL_GetTick() - last_sample >= sample_interval) {
       uint32_t t0 = HAL_GetTick();
       entropy_adc(pool, 20);
+      entropy_float_pin(pool, 20);
       entropy_jitter(pool, 20);
-      // entropy_float_pin(pool, 20);
       pool[0] ^= btn_entropy;
       mix(pool, 20, ++n_rounds);
       entropy_jitter(pool, 20);
