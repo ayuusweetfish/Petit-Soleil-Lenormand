@@ -645,7 +645,7 @@ static inline void entropy_adc(uint32_t *out_v, int n)
   // while (1) { }
 }
 
-static uint32_t entropy_float_pin_1;
+static uint32_t entropy_float_pin_1, entropy_float_pin_2;
 
 #pragma GCC push_options
 #pragma GCC optimize("O3")
@@ -663,32 +663,54 @@ static inline void entropy_float_pin(uint32_t *s, int n)
   ADC1->SMPR = 0b000;
   ADC1->CHSELR = (1 << 17);
 
-  for (int i = 0; i < n * 4; i++) {
-    // Output low in even-numbered iterations, high in odd-numbered ones
-    GPIOA->BSRR = (i % 2 == 0 ? (1 << 29) : (1 << 13));
+  __HAL_RCC_CRC_CLK_ENABLE();
+  // Reset with polynomial 0x04C11DB7 and initial value 0xFFFFFFFF
+  CRC->CR |= CRC_CR_RESET;
+  CRC->DR = (TIM3->CNT << 16) | TIM16->CCR1;
 
-    uint32_t addr_scratch;
+  GPIOA->MODER = moder_2;
+  adc_start();
+  uint16_t value = adc_poll_value();
+  *(uint16_t *)&CRC->DR = value ^ ((uint16_t)TIM16->CCR1 << 8);
+  entropy_float_pin_2 = value;
+
+  for (int i = 0; i < n * 4; i++) {
+    uint32_t addr_scratch1, addr_scratch2;
     __asm__ volatile (
-      "   ldr %[addr], =%[gpioa_moder]\n"
-      "   str %[moder_1], [%[addr]]\n"
-      "   str %[moder_0], [%[addr]]\n"
-      : [addr] "=&l" (addr_scratch)
-      : [moder_0] "l" (moder_0),
-        [moder_1] "l" (moder_1),
-        [gpioa_moder] "i" (&GPIOA->MODER)
+      "   ldr %[gpioa_moder_addr], =%[gpioa_moder]\n"
+      "   ldr %[gpioa_bsrr_addr], =%[gpioa_bsrr]\n"
+      "   str %[moder_1], [%[gpioa_moder_addr]]\n"
+      "   str %[bsrr_clear], [%[gpioa_bsrr_addr]]\n"
+      "   str %[bsrr_set], [%[gpioa_bsrr_addr]]\n"
+      "   str %[moder_2], [%[gpioa_moder_addr]]\n"
+      : [gpioa_moder_addr] "=&l" (addr_scratch1),
+        [gpioa_bsrr_addr] "=&l" (addr_scratch2)
+      : [moder_1] "l" (moder_1),
+        [moder_2] "l" (moder_2),
+        [gpioa_moder] "i" (&GPIOA->MODER),
+        [gpioa_bsrr] "i" (&GPIOA->BSRR),
+        [bsrr_clear] "l" (1 << 29),
+        [bsrr_set] "l" (1 << 13)
       : "memory"
     );
 
-    GPIOA->MODER = moder_2;
-
     adc_start();
-    uint32_t value = adc_poll_value();
-    s[i / 4] ^= (value << (i % 4 * 7));
+    uint16_t value = adc_poll_value();
+    *(uint16_t *)&CRC->DR = value ^ ((uint16_t)TIM16->CCR1 << 8);
 
-    if (i == 0) entropy_float_pin_1 = 0;
-    if (i < 4) entropy_float_pin_1 ^= (value << (i % 4 * 7));
+    if (i % 4 == 3) {
+      // 2 AHB clock cycles
+      // 8 system clock cycles, minus some overhead
+      // XXX: Is this necessary? Didn't see others doing it
+      __asm__ volatile ("nop\nnop\nnop\nnop\n");
+      s[i / 4] ^= CRC->DR;
+      if (i == 3) entropy_float_pin_1 = CRC->DR;
+    }
+    if (i < 2) entropy_float_pin_2 ^= ((uint32_t)value << ((i + 1) * 12));
   }
+
   adc_stop();
+  __HAL_RCC_CRC_CLK_DISABLE();
 
   GPIOA->MODER = moder_0;
   GPIOA->OSPEEDR = ospeedr_0;
@@ -1505,7 +1527,7 @@ if (stage == -1) {
     time_str[i] = '0' + n % 10;
   print_string(pixels, time_str, 122, 3);
 
-  uint16_t btn_entropy_str[20] = { 0 };
+  uint16_t btn_entropy_str[29] = { 0 };
   for (int i = 0; i < 8; i++)
     btn_entropy_str[i] = "0123456789abcdef"[(pool[0] >> ((7 - i) * 4)) % 16];
   btn_entropy_str[8] = ' ';
@@ -1513,6 +1535,9 @@ if (stage == -1) {
   btn_entropy_str[10] = ' ';
   for (int i = 0; i < 8; i++)
     btn_entropy_str[i + 11] = "0123456789abcdef"[(entropy_float_pin_1 >> ((7 - i) * 4)) % 16];
+  btn_entropy_str[19] = ' ';
+  for (int i = 0; i < 8; i++)
+    btn_entropy_str[i + 20] = "0123456789abcdef"[(entropy_float_pin_2 >> ((7 - i) * 4)) % 16];
   print_string(pixels, btn_entropy_str, 139, 3);
 
   for (int i = 0; i < 200 * 200 / 8; i++) pixels[i] ^= 0xff;
