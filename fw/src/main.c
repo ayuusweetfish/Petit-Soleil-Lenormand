@@ -674,26 +674,24 @@ static inline void entropy_float_pin(uint32_t *s, int n)
   *(uint16_t *)&CRC->DR = value ^ ((uint16_t)TIM16->CCR1 << 8);
   entropy_float_pin_2 = value;
 
-  for (int i = 0; i < n * 4; i++) {
-    uint32_t addr_scratch1, addr_scratch2;
-    __asm__ volatile (
-      "   ldr %[gpioa_moder_addr], =%[gpioa_moder]\n"
-      "   ldr %[gpioa_bsrr_addr], =%[gpioa_bsrr]\n"
-      "   str %[moder_1], [%[gpioa_moder_addr]]\n"
-      "   str %[bsrr_clear], [%[gpioa_bsrr_addr]]\n"
-      "   str %[bsrr_set], [%[gpioa_bsrr_addr]]\n"
-      "   str %[moder_2], [%[gpioa_moder_addr]]\n"
-      : [gpioa_moder_addr] "=&l" (addr_scratch1),
-        [gpioa_bsrr_addr] "=&l" (addr_scratch2)
-      : [moder_1] "l" (moder_1),
-        [moder_2] "l" (moder_2),
-        [gpioa_moder] "i" (&GPIOA->MODER),
-        [gpioa_bsrr] "i" (&GPIOA->BSRR),
-        [bsrr_clear] "l" (1 << 29),
-        [bsrr_set] "l" (1 << 13)
-      : "memory"
-    );
+  // Pull for exactly one cycle
+  GPIOA->BSRR = (1 << 13);
+  uint32_t addr_scratch1;
+  __asm__ volatile (
+    "   ldr %[gpioa_moder_addr], =%[gpioa_moder]\n"
+    "   str %[moder_1], [%[gpioa_moder_addr]]\n"
+    "   str %[moder_2], [%[gpioa_moder_addr]]\n"
+    : [gpioa_moder_addr] "=&l" (addr_scratch1)
+    : [moder_1] "l" (moder_1),
+      [moder_2] "l" (moder_2),
+      [gpioa_moder] "i" (&GPIOA->MODER),
+      [gpioa_bsrr] "i" (&GPIOA->BSRR),
+      [bsrr_clear] "l" (1 << 29),
+      [bsrr_set] "l" (1 << 13)
+    : "memory"
+  );
 
+  for (int i = 0; i < n * 4; i++) {
     adc_start();
     uint16_t value = adc_poll_value();
     *(uint16_t *)&CRC->DR = value ^ ((uint16_t)TIM16->CCR1 << 8);
