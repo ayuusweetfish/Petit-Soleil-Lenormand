@@ -27,8 +27,8 @@ lorem ipsum
 文字 Snake
 
 ====== 8 ======
-lorem ipsum
-文字 Coffin
+棺木 Coffin
+终止 · 哀悼 · 重生
 
 ====== 9 ======
 lorem ipsum

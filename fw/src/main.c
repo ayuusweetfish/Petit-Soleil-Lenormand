@@ -386,6 +386,7 @@ void flash_release_power_down()
 {
   uint8_t op_release_power_down[] = {0xAB};
   flash_cmd(op_release_power_down);
+  spin_delay(16 * 3); // tRES1 = 3 µs max.
 }
 
 void flash_erase_4k(uint32_t addr)
@@ -479,7 +480,7 @@ flash_read_op(xor, ^=)  // flash_read_xor
 flash_read_op(and, &=)  // flash_read_and
 flash_read_op(clear, &= ~)  // flash_read_clear
 
-uint8_t flash_test_write_buf[256 * 8];
+static uint8_t flash_test_write_buf[256 * 16];
 
 __attribute__ ((noinline))
 void flash_test_write(uint32_t addr, size_t size)
@@ -1166,6 +1167,7 @@ void sense_vri()
   TIM14->CCR1 = TIM3->CCR1 = TIM17->CCR1 = 0;
 
   // Flash test
+  flash_release_power_down();
   uint8_t jedec[3], flash_uid[4];
   flash_id(jedec, flash_uid);
   // Manufacturer = 0xef (Winbond)
@@ -1530,7 +1532,6 @@ if (0) {
 
   for (int i = 0; ; i = (i == 3 ? 1 : i + 1)) {
     flash_release_power_down();
-    spin_delay(16 * 3); // tRES1 = 3 µs max.
     display_image(i);
     flash_power_down();
 

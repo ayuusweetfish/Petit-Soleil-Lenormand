@@ -5,7 +5,7 @@
 
 static FILE *f_out_gdb;
 
-#define PAGE_SIZE (256 * 8)
+#define PAGE_SIZE (256 * 16)
 
 static uint8_t page_buf[PAGE_SIZE];
 static int page_buf_ptr = 0;
@@ -54,6 +54,8 @@ int main(int argc, char *argv[])
   // fprintf(f_out_gdb, "target extended-remote localhost:3333\n");
   // fprintf(f_out_gdb, "b flash_test_write_breakpoint\n");
   // fprintf(f_out_gdb, "commands\n");
+
+  fprintf(f_out_gdb, "set pagination off\n");
 
   int in_count = argc - 2;
   for (int i = 0; i < in_count; i++) {
