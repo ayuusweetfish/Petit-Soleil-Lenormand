@@ -78,7 +78,7 @@ card_names() {
   card_name 28 0 Guest
   card_name 29 0 Host
   card_name 30 0 Lily
-  card_name 31 0 Sun
+  card_name 31 1 Sun
   card_name 32 0 Moon
   card_name 33 0 Key
   card_name 34 0 Fish

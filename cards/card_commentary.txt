@@ -119,12 +119,12 @@ lorem ipsum
 文字 Lily
 
 ====== 31 ======
-lorem ipsum
-文字 Sun
+太阳 Sun
+愉悦 · 热烈 · 能量 · 知觉
 
 ====== 32 ======
-lorem ipsum
-文字 Moon
+月亮 Moon
+潜意识 · 直觉 · 情绪 · 幻想 · 恐惧
 
 ====== 33 ======
 lorem ipsum

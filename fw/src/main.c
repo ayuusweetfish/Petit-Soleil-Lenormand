@@ -1398,7 +1398,7 @@ redraw:
   uint8_t card_id = draw_card(pool, sizeof pool / sizeof pool[0]);
   // XXX: Debug use only
 if (1) {
-  static const uint8_t candidate_cards[] = {8, 9, 32, 34};
+  static const uint8_t candidate_cards[] = {8, 9, 31, 32, 34};
   card_id = candidate_cards[card_id % (sizeof candidate_cards)] - 1;
 }
 
