@@ -6,9 +6,13 @@ card_names() {
   mkdir card_names
 
   card_name() {
-    N=$1
-    side=$2
-    T=$3
+    N=$1    # Number
+    side=$2 # Side
+    T=$3    # Title
+    S=$4    # Letter spacing
+    if [ -z "$S" ]; then
+      S=0
+    fi
     if [ "$side" == "0" ]; then
       CX=19
       CY=21.5
@@ -44,6 +48,7 @@ card_names() {
       | perl -pe "s/{CX}/${CX}/g" | perl -pe "s/{CY}/${CY}/g" \
       | perl -pe "s/{CTX}/${CTX}/g" | perl -pe "s/{CTY}/${CTY}/g" \
       | perl -pe "s/{TTX}/${TTX}/g" | perl -pe "s/{TTY}/${TTY}/g" \
+      | perl -pe "s/{S}/${S}/g" \
       | inkscape --export-filename=$PWD/card_names/$1.png -p
       # > $PWD/card_names/$1.svg  # For inspection
   }
@@ -69,7 +74,7 @@ card_names() {
   card_name 19 0 Tower
   card_name 20 0 Garden
   card_name 21 0 Mountain
-  card_name 22 0 Crossroads
+  card_name 22 0 Crossroads -0.4
   card_name 23 0 Mice
   card_name 24 0 Heart
   card_name 25 0 Ring
