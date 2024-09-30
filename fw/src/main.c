@@ -28,7 +28,6 @@ void swv_trap_line()
 }
 static inline void swv_putchar(uint8_t c)
 {
-  // ITM_SendChar(c);
   if (c == '\n') {
     swv_buf[swv_buf_ptr >= sizeof swv_buf ?
       (sizeof swv_buf - 1) : swv_buf_ptr] = '\0';
@@ -361,9 +360,9 @@ void flash_wait_poll(uint32_t interval_us)
   uint8_t op_read_status[] = {0x05};
   spi_transmit(op_read_status, sizeof op_read_status);
   do {
-    // dwt_delay(interval_us * CYC_MICROSECOND);
+    // XXX: To actually sleep, use a timer instead
+    // spin_delay(interval_us * 16);
     spi_receive(&status0, 1);
-    // swv_printf("BUSY = %u, SysTick = %lu\n", status0 & 1, HAL_GetTick());
   } while (status0 & 1);
   flash_cs_1();
 }
@@ -985,27 +984,29 @@ int main()
 bool stop_wait_button(uint32_t min_dur, uint32_t max_dur)
 {
   while (true) {
-    // while (HAL_GPIO_ReadPin(GPIOA, PIN_BUTTON) == 1) sleep_delay(10);
+    // If the button is not pressed, enter stop mode and wait for a press
+    if (GPIOA->IDR & PIN_BUTTON) {
+      HAL_SuspendTick();
 
-    HAL_SuspendTick();
+      rtc_waiting_for = RTC_WAITING_FOR_BTN;
+      __HAL_PWR_CLEAR_FLAG(PWR_FLAG_WUF);
+      __HAL_RTC_WAKEUPTIMER_CLEAR_FLAG(&rtc, RTC_FLAG_WUTF);
+      // 117 = 120 s * (32 kHz / (0x7F + 1) * (0xFF + 1))
+      HAL_RTCEx_SetWakeUpTimer_IT(&rtc, 117, RTC_WAKEUPCLOCK_CK_SPRE_16BITS);
 
-    rtc_waiting_for = RTC_WAITING_FOR_BTN;
-    __HAL_PWR_CLEAR_FLAG(PWR_FLAG_WUF);
-    __HAL_RTC_WAKEUPTIMER_CLEAR_FLAG(&rtc, RTC_FLAG_WUTF);
-    // 117 = 120 s * (32 kHz / (0x7F + 1) * (0xFF + 1))
-    HAL_RTCEx_SetWakeUpTimer_IT(&rtc, 117, RTC_WAKEUPCLOCK_CK_SPRE_16BITS);
+      EXTI->RTSR1 &= ~EXTI_LINE_BUTTON; // Disable rising trigger
+      stopped = true;
 
-    EXTI->RTSR1 &= ~EXTI_LINE_BUTTON; // Disable rising trigger
-    stopped = true;
+      if (GPIOA->IDR & PIN_BUTTON)      // Double check
+        HAL_PWR_EnterSTOPMode(PWR_LOWPOWERREGULATOR_ON, PWR_STOPENTRY_WFI);
 
-    HAL_PWR_EnterSTOPMode(PWR_LOWPOWERREGULATOR_ON, PWR_STOPENTRY_WFI);
+      EXTI->RTSR1 |=  EXTI_LINE_BUTTON; // Enable rising trigger
 
-    EXTI->RTSR1 |=  EXTI_LINE_BUTTON; // Enable rising trigger
+      HAL_RTCEx_DeactivateWakeUpTimer(&rtc);
+      rtc_waiting_for = RTC_WAITING_FOR_NONE;
 
-    HAL_RTCEx_DeactivateWakeUpTimer(&rtc);
-    rtc_waiting_for = RTC_WAITING_FOR_NONE;
-
-    HAL_ResumeTick();
+      HAL_ResumeTick();
+    }
 
     btn_active = true;
     uint32_t t0 = HAL_GetTick();
@@ -1193,8 +1194,6 @@ void sense_vri()
   // Manufacturer = 0xef (Winbond)
   // Memory type = 0x40
   // Capacity = 0x15 (2^21 B = 2 MiB = 16 Mib)
-  // swv_printf("MF = %02x\nID = %02x %02x\nUID = %02x%02x%02x%02x\n",
-  //   jedec[0], jedec[1], jedec[2], flash_uid[0], flash_uid[1], flash_uid[2], flash_uid[3]);
 #define MANUFACTURE 0
 #if MANUFACTURE
   flash_test_write_breakpoint();
@@ -1452,6 +1451,18 @@ if (stage == -1) {
     epd_write_ram_prev(pixels);
     for (int i = 0; i < 200 * 200 / 8; i++) pixels[i] ^= 0xff;
   }
+
+// Print voltage for inspection
+if (1) {
+  // Print string
+  uint16_t voltage_str[] = {'0', '.', '0', '0', '0', ' ', 'V', '\0'};
+  voltage_str[0] = '0' + vri_mV / 1000;
+  voltage_str[2] = '0' + vri_mV / 100 % 10;
+  voltage_str[3] = '0' + vri_mV / 10 % 10;
+  voltage_str[4] = '0' + vri_mV % 10;
+  print_string(pixels, voltage_str, 112, 3);
+}
+
   epd_write_ram(pixels);
   if (stage == 0)
     epd_display(false);
@@ -1508,7 +1519,6 @@ if (stage == -1) {
 
   // Print string
   uint16_t voltage_str[] = {'0', '.', '0', '0', '0', ' ', 'V', '\0'};
-  // char16_t voltage_str[] = u"0.000 V";
   voltage_str[0] = '0' + vri_mV / 1000;
   voltage_str[2] = '0' + vri_mV / 100 % 10;
   voltage_str[3] = '0' + vri_mV / 10 % 10;
