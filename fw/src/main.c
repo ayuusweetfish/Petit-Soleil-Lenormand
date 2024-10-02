@@ -983,7 +983,9 @@ int main()
 // Returns false for a short press, and true for a long press (exceeding `max_dur`)
 bool stop_wait_button(uint32_t min_dur, uint32_t max_dur)
 {
+  const uint32_t timeout_seconds = 60;
   while (true) {
+if (1) {
     // If the button is not pressed, enter stop mode and wait for a press
     if (GPIOA->IDR & PIN_BUTTON) {
       HAL_SuspendTick();
@@ -991,8 +993,8 @@ bool stop_wait_button(uint32_t min_dur, uint32_t max_dur)
       rtc_waiting_for = RTC_WAITING_FOR_BTN;
       __HAL_PWR_CLEAR_FLAG(PWR_FLAG_WUF);
       __HAL_RTC_WAKEUPTIMER_CLEAR_FLAG(&rtc, RTC_FLAG_WUTF);
-      // 117 = 120 s * (32 kHz / (0x7F + 1) * (0xFF + 1))
-      HAL_RTCEx_SetWakeUpTimer_IT(&rtc, 117, RTC_WAKEUPCLOCK_CK_SPRE_16BITS);
+      uint32_t wutr_val = timeout_seconds * 32000 / ((0x7F + 1) * (0xFF + 1));
+      HAL_RTCEx_SetWakeUpTimer_IT(&rtc, wutr_val, RTC_WAKEUPCLOCK_CK_SPRE_16BITS);
 
       EXTI->RTSR1 &= ~EXTI_LINE_BUTTON; // Disable rising trigger
       stopped = true;
@@ -1007,6 +1009,16 @@ bool stop_wait_button(uint32_t min_dur, uint32_t max_dur)
 
       HAL_ResumeTick();
     }
+} else {
+    // XXX: Debugging use only; spin-loop
+    uint32_t t0 = HAL_GetTick();
+    while (GPIOA->IDR & PIN_BUTTON) {
+      if (HAL_GetTick() - t0 >= timeout_seconds * 1000) {
+        HAL_GPIO_WritePin(GPIOA, PIN_PWR_LATCH, 0);
+        while (1) { }
+      }
+    }
+}
 
     btn_active = true;
     uint32_t t0 = HAL_GetTick();
