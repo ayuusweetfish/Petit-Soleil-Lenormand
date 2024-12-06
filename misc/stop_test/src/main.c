@@ -47,6 +47,51 @@ static void swv_printf(const char *restrict fmt, ...)
 #define swv_printf(...)
 #endif
 
+static SPI_HandleTypeDef spi1;
+
+#pragma GCC push_options
+#pragma GCC optimize("O3")
+static inline void spi_transmit(const uint8_t *data, size_t size)
+{
+  HAL_SPI_Transmit(&spi1, (uint8_t *)data, size, 1000); return;
+}
+
+static inline void spi_receive(uint8_t *data, size_t size)
+{
+  HAL_SPI_Receive(&spi1, data, size, 1000); return;
+}
+
+#define flash_cs_0() (GPIOB->BSRR = (uint32_t)1 << (9 + 16))
+#define flash_cs_1() (GPIOB->BSRR = (uint32_t)1 << (9))
+
+static inline void spi_flash_tx_rx(
+  uint8_t *txbuf, size_t txsize,
+  uint8_t *rxbuf, size_t rxsize
+) {
+  flash_cs_0();
+  spi_transmit(txbuf, txsize);
+  if (rxsize != 0) {
+    while (SPI1->SR & SPI_SR_BSY) { }
+    spi_receive(rxbuf, rxsize);
+  }
+  flash_cs_1();
+}
+
+#define flash_cmd(_cmd) \
+  spi_flash_tx_rx((_cmd), sizeof (_cmd), NULL, 0)
+#define flash_cmd_sized(_cmd, _cmdlen) \
+  spi_flash_tx_rx((_cmd), (_cmdlen), NULL, 0)
+#define flash_cmd_bi(_cmd, _rxbuf) \
+  spi_flash_tx_rx((_cmd), sizeof (_cmd), (_rxbuf), sizeof (_rxbuf))
+#define flash_cmd_bi_sized(_cmd, _cmdlen, _rxbuf, _rxlen) \
+  spi_flash_tx_rx((_cmd), (_cmdlen), (_rxbuf), (_rxlen))
+
+void flash_power_down()
+{
+  uint8_t op_power_down[] = {0xB9};
+  flash_cmd(op_power_down);
+}
+
 int main()
 {
   HAL_Init();
@@ -65,6 +110,44 @@ int main()
   });
 
   HAL_Delay(2000);
+
+  // ======== SPI ========
+  // GPIO ports
+  // SPI1_SCK (PA5), SPI1_MISO (PA6), SPI1_MOSI (PA7)
+  HAL_GPIO_Init(GPIOA, &(GPIO_InitTypeDef){
+    .Pin = GPIO_PIN_5 | GPIO_PIN_6 | GPIO_PIN_7,
+    .Mode = GPIO_MODE_AF_PP,
+    .Alternate = GPIO_AF0_SPI1,
+    .Pull = GPIO_NOPULL,
+    .Speed = GPIO_SPEED_FREQ_HIGH,
+  });
+  // Output FLASH_CSN (PB9)
+  HAL_GPIO_Init(GPIOB, &(GPIO_InitTypeDef){
+    .Pin = GPIO_PIN_9,
+    .Mode = GPIO_MODE_OUTPUT_PP,
+  });
+  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_9, 1);
+
+  __HAL_RCC_SPI1_CLK_ENABLE();
+  spi1 = (SPI_HandleTypeDef){
+    .Instance = SPI1,
+    .Init = {
+      .Mode = SPI_MODE_MASTER,
+      .Direction = SPI_DIRECTION_2LINES,
+      .CLKPolarity = SPI_POLARITY_LOW,
+      .CLKPhase = SPI_PHASE_1EDGE,
+      .NSS = SPI_NSS_SOFT,
+      .FirstBit = SPI_FIRSTBIT_MSB,
+      .TIMode = SPI_TIMODE_DISABLE,
+      .CRCCalculation = SPI_CRCCALCULATION_DISABLE,
+      .DataSize = SPI_DATASIZE_8BIT,
+      .BaudRatePrescaler = SPI_BAUDRATEPRESCALER_2,
+    },
+  };
+  HAL_SPI_Init(&spi1);
+  __HAL_SPI_ENABLE(&spi1);
+
+  flash_power_down();
 
   // __HAL_RCC_GPIOA_CLK_DISABLE();
   // __HAL_RCC_GPIOB_CLK_DISABLE();
