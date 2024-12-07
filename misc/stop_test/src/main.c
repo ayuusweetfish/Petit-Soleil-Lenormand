@@ -118,8 +118,6 @@ int main()
     .Pin = GPIO_PIN_5 | GPIO_PIN_6 | GPIO_PIN_7,
     .Mode = GPIO_MODE_AF_PP,
     .Alternate = GPIO_AF0_SPI1,
-    .Pull = GPIO_NOPULL,
-    .Speed = GPIO_SPEED_FREQ_HIGH,
   });
   // Output FLASH_CSN (PB9)
   HAL_GPIO_Init(GPIOB, &(GPIO_InitTypeDef){
@@ -148,6 +146,15 @@ int main()
   __HAL_SPI_ENABLE(&spi1);
 
   flash_power_down();
+
+/*
+  HAL_SPI_DeInit(&spi1);
+  __HAL_SPI_DISABLE(&spi1);
+  __HAL_RCC_SPI1_CLK_DISABLE();
+*/
+
+  HAL_GPIO_DeInit(GPIOA, GPIO_PIN_5 | GPIO_PIN_6 | GPIO_PIN_7);
+  HAL_GPIO_DeInit(GPIOB, GPIO_PIN_9);
 
   // __HAL_RCC_GPIOA_CLK_DISABLE();
   // __HAL_RCC_GPIOB_CLK_DISABLE();
