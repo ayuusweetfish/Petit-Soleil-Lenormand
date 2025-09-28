@@ -253,7 +253,7 @@ const src_elektro_l = (type) => async (timestamp) => {
     date.getUTCDate().toString().padStart(2, '0') + '-' +
     date.getUTCHours().toString().padStart(2, '0') +
     date.getUTCMinutes().toString().padStart(2, '0')
-  return await fetchImage(`http://electro.ntsomz.ru/i/${type}/${dateTimeStr}.jpg`)
+  return await fetchImage(`https://electro.ntsomz.ru/i/${type}/${dateTimeStr}.jpg`)
 }
 const src_elektro_l2 = src_elektro_l('splash')
 const src_elektro_l3 = src_elektro_l('splash_l3')
