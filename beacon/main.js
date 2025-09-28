@@ -810,7 +810,7 @@ Deno.serve({
       if (latestResultLookupTimestamp !== timestamp) {
         const output = await loadOutput(timestamp)
         const details = (await loadOutputDetails(timestamp))
-          .filter((entry) => entry.length !== null)
+          ?.filter((entry) => entry.length !== null)
         if (output && details) {
           for (const entry of details) {
             const cacheMatch = entry.message.match(/^([^ ]*) \(cached .+\)$/)
