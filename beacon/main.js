@@ -436,7 +436,7 @@ const sources = {
   'INSAT-3DS MIR 3.9u': src_imd_mir,
   'GK2A RGB DAYNIGHT': src_gk2a_rgb_daynight,
   'GK2A IR 8.7u': src_gk2a_ir087,
-  'Elektro-L 2': (timestamp) => src_elektro_l2(timestamp - 60*60000),
+  'Elektro-L 2': (timestamp) => src_elektro_l2(timestamp - 30*60000),
   'Elektro-L 3': (timestamp) => src_elektro_l3(timestamp - 30*60000),
 /*
   'Test': src_test,
