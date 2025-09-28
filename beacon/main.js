@@ -214,14 +214,20 @@ const src_meteosat_ir039 = src_meteosat_eumetsat('IR039')
 const src_meteosat_ir108 = src_meteosat_eumetsat('IR108')
 
 const src_imd = (type) => async (timestamp) => {
-  timestamp -= timestamp % (15 * 60000)
-  return await fetchImage(`https://mausam.imd.gov.in/Satellite/3Dglobe_${type}.jpg`,
-    new Date(timestamp),
-    new Date(timestamp + 45 * 60000),
-    true)
+  timestamp -= timestamp % (30 * 60000)
+  const date = new Date(timestamp)
+  const yearStr = date.getUTCFullYear().toString()
+  const monthAbbrs =
+    ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC']
+  const monthDayStr =
+    date.getUTCDate().toString().padStart(2, '0') +
+    monthAbbrs[date.getUTCMonth()]
+  const hourStr = date.getUTCHours().toString().padStart(2, '0')
+  const minuteStr = date.getUTCMinutes().toString().padStart(2, '0')
+  return await fetchImage(`https://mosdac.gov.in/look/3S_IMG/preview/${yearStr}/${monthDayStr}/3SIMG_${monthDayStr}${yearStr}_${hourStr}${minuteStr}_L1B_STD_${type}_V01R00.jpg`)
 }
-const src_imd_ir1 = src_imd('ir1')
-const src_imd_mp = src_imd('mp')
+const src_imd_ir1 = src_imd('IR1')
+const src_imd_mir = src_imd('MIR')
 
 const src_gk2a = (type) => async (timestamp) => {
   timestamp -= timestamp % (10 * 60000)
@@ -426,8 +432,8 @@ const sources = {
   'Himawari-9 True Color Reproduction': src_himawari_trm,
   'Meteosat IR 0.39u': src_meteosat_ir039,
   'Meteosat IR 10.8u': src_meteosat_ir108,
-  'INSAT-3D IR1 10.8u': src_imd_ir1,
-  'INSAT-3D TIR BT': src_imd_mp,
+  'INSAT-3DS IR1 10.8u': src_imd_ir1,
+  'INSAT-3DS MIR 3.9u': src_imd_mir,
   'GK2A RGB DAYNIGHT': src_gk2a_rgb_daynight,
   'GK2A IR 8.7u': src_gk2a_ir087,
   'Elektro-L 2': (timestamp) => src_elektro_l2(timestamp - 60*60000),
