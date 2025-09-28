@@ -809,7 +809,8 @@ Deno.serve({
 
       if (latestResultLookupTimestamp !== timestamp) {
         const output = await loadOutput(timestamp)
-        const details = await loadOutputDetails(timestamp)
+        const details = (await loadOutputDetails(timestamp))
+          .filter((entry) => entry.length !== null)
         if (output && details) {
           for (const entry of details) {
             const cacheMatch = entry.message.match(/^([^ ]*) \(cached .+\)$/)
@@ -843,7 +844,7 @@ Deno.serve({
             'localRandomnessPrefixSuffix': prefixSuffix(localRandomnessArray),
             'previousTimestamp': timestamp - 60 * 60000,
             'precommitment': prefixSuffix(await miscSourceBlockHashForTimestamp(timestamp)),
-            'details': details.filter((e) => e.length !== null),
+            'details': details,
           }
           latestResultLookupTimestamp = timestamp
           latestResultOutput = decodeHex(output)
