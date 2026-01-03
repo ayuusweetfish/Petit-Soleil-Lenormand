@@ -2,7 +2,9 @@
 
 MONITOR_RESET="monitor reset halt"
 
-if [ "$1" == "c" ]; then
+ELF="$1"
+
+if [ "$2" == "c=1" ]; then
   MONITOR_RESET=
   echo "Attaching without reset"
 fi
@@ -36,10 +38,10 @@ ${MONITOR_RESET}
 c
 EOF
 
-make debug &
+make debug-server &
 pid_ocd=$!
 
-~/tools/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/arm-none-eabi-gdb ${BDIR:-build}/app.elf -x $F
+~/tools/xpack-arm-none-eabi-gcc-14.2.1-1.1/bin/arm-none-eabi-gdb "$ELF" -x $F
 rm $F
 
 kill $pid_ocd 2>/dev/null

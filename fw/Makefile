@@ -111,7 +111,7 @@ endif
 TGT_INCFLAGS := $(addprefix -I $(TOP)/, $(INCLUDES))
 
 
-.PHONY: all clean flash echo debug
+.PHONY: all clean flash echo debug debug-server
 
 all: $(BDIR)/$(PROJECT).elf $(BDIR)/$(PROJECT).bin $(BDIR)/$(PROJECT).hex
 
@@ -154,4 +154,8 @@ flash: all
 	$(PYOCD_EXE) cmd -v -c 'erase; load $(BDIR)/$(PROJECT).hex; reset' -t $(PYOCD_DEVICE) --config $(TOP)/base/pyocd.yml
 
 debug: all
+	# make debug c=1
+	@bash base/debug.sh $(BDIR)/$(PROJECT).elf c=$(c)
+
+debug-server:
 	$(PYOCD_EXE) gdb --elf $(BDIR)/$(PROJECT).elf -t $(PYOCD_DEVICE) --config $(TOP)/base/pyocd.yml --persist
