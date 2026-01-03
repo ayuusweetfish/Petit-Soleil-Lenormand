@@ -493,8 +493,8 @@ void flash_test_write_breakpoint()
 }
 
 #define FILE_ADDR___wenquanyi_9pt_bin 0
-#define FILE_SIZE___wenquanyi_9pt_bin 704169
-#define FILE_ADDR___cards_bin        704169
+#define FILE_SIZE___wenquanyi_9pt_bin 710629
+#define FILE_ADDR___cards_bin        710629
 #define FILE_SIZE___cards_bin        468036
 
 void bitmap_font_read_data(uint32_t glyph, uint8_t *buf)
