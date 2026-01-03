@@ -1323,13 +1323,18 @@ void sense_vri()
   pool[16] ^= adc_vrefint;
   pool[17] ^= adc_vri;
 
-while (0) {
-  uint32_t t0 = HAL_GetTick();
-  entropy_adc(pool, 20);
-  uint32_t t1 = HAL_GetTick();
-  entropy_jitter(pool, 20);
-  uint32_t t2 = HAL_GetTick();
-  swv_printf("%u %u\n", t1 - t0, t2 - t1);  // 8~9 0~1
+if (1) {
+  magical_phase = pool[0] % MAGICAL_N;
+  magical_intensity = 65536 / 8;
+  __HAL_RCC_TIM3_CLK_ENABLE();
+  while (1) {
+    uint32_t t0 = HAL_GetTick();
+    entropy_adc(pool, 20);
+    uint32_t t1 = HAL_GetTick();
+    entropy_jitter(pool, 20);
+    uint32_t t2 = HAL_GetTick();
+    swv_printf("%u %u\n", t1 - t0, t2 - t1);  // 8~9 0~1
+  }
 }
 
   uint32_t n_cards = 0;

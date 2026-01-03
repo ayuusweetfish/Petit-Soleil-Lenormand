@@ -185,3 +185,6 @@ clean:
 
 flash: all
 	$(PYOCD_EXE) cmd -v -c 'erase; load $(BDIR)/$(PROJECT).hex; reset' -t $(PYOCD_DEVICE) --config $(TOP)/base/pyocd.yml
+
+debug: all
+	$(PYOCD_EXE) gdb --elf $(BDIR)/$(PROJECT).elf -t $(PYOCD_DEVICE) --config $(TOP)/base/pyocd.yml --persist
