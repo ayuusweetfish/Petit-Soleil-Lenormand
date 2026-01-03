@@ -1,4 +1,4 @@
-WD=$(mktemp -d)
+WD=$(mktemp -d --tmpdir soleil.XXX)
 echo $WD
 
 cc gen.c -O2 -o $WD/gen
