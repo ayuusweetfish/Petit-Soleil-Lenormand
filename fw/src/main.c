@@ -21,6 +21,12 @@
 
 #include "debug_printf.h"
 
+// Replace sleeps with busy loops for easier debugging.
+#define ENABLE_SLEEP 0
+// Floating-pin entropy samples pin 13, which is also used for SWD.
+// Turn off if this upsets GDB during debugging.
+#define ENABLE_FLOATING_PIN_ENTROPY 0
+
 SPI_HandleTypeDef spi1 = { 0 };
 ADC_HandleTypeDef adc1 = { 0 };
 TIM_HandleTypeDef tim3, tim14, tim16, tim17;
@@ -44,7 +50,9 @@ static inline void sleep_delay(uint32_t ticks)
 {
   uint32_t t0 = HAL_GetTick();
   while (HAL_GetTick() - t0 < ticks) {
+#if ENABLE_SLEEP
     HAL_PWR_EnterSLEEPMode(PWR_MAINREGULATOR_ON, PWR_SLEEPENTRY_WFI);
+#endif
   }
 }
 
@@ -123,6 +131,7 @@ static inline void epd_waitbusy()
   sleep_delay(2); // Some operations are short, branch off early
 
   while (GPIOA->IDR & PIN_EP_BUSY) {
+#if ENABLE_SLEEP
     HAL_SuspendTick();
     rtc_waiting_for = RTC_WAITING_FOR_EP_BUSY;
     __HAL_PWR_CLEAR_FLAG(PWR_FLAG_WUF);
@@ -147,6 +156,7 @@ static inline void epd_waitbusy()
     // Debouncing, in case of spurious edges due to noise
     sleep_delay(2);
     // The loop condition does the re-check
+#endif
   }
 }
 #pragma GCC pop_options
@@ -621,6 +631,7 @@ static uint32_t entropy_float_pin_1, entropy_float_pin_2;
 #pragma GCC optimize("O3")
 static inline void entropy_float_pin(uint32_t *s, int n)
 {
+#if ENABLE_FLOATING_PIN_ENTROPY
   entropy_float_pin_1 = 0;
 
   uint32_t moder_0 = GPIOA->MODER;
@@ -667,10 +678,7 @@ static inline void entropy_float_pin(uint32_t *s, int n)
     *(uint16_t *)&CRC->DR = value ^ ((uint16_t)TIM16->CCR1 << 8);
 
     if (i % 4 == 3) {
-      // 2 AHB clock cycles
-      // 8 system clock cycles, minus some overhead
-      // XXX: Is this necessary? Didn't see others doing it
-      __asm__ volatile ("nop\nnop\nnop\nnop\n");
+      // CRC->DR handles latency and always returns processed data
       s[i / 4] ^= CRC->DR;
       if (i == 3) entropy_float_pin_1 = CRC->DR;
     }
@@ -682,6 +690,7 @@ static inline void entropy_float_pin(uint32_t *s, int n)
 
   GPIOA->MODER = moder_0;
   GPIOA->OSPEEDR = ospeedr_0;
+#endif
 }
 #pragma GCC pop_options
 
@@ -956,7 +965,7 @@ bool stop_wait_button(uint32_t min_dur, uint32_t max_dur)
 {
   const uint32_t timeout_seconds = 60;
   while (true) {
-if (1) {
+#if ENABLE_SLEEP
     // If the button is not pressed, enter stop mode and wait for a press
     if (GPIOA->IDR & PIN_BUTTON) {
       HAL_SuspendTick();
@@ -980,8 +989,9 @@ if (1) {
 
       HAL_ResumeTick();
     }
-} else {
-    // XXX: Debugging use only; spin-loop
+#else
+    // Spin loop
+  {
     uint32_t t0 = HAL_GetTick();
     while (GPIOA->IDR & PIN_BUTTON) {
       if (HAL_GetTick() - t0 >= timeout_seconds * 1000) {
@@ -989,7 +999,8 @@ if (1) {
         while (1) { }
       }
     }
-}
+  }
+#endif
 
     btn_active = true;
     uint32_t t0 = HAL_GetTick();
@@ -1294,7 +1305,7 @@ void sense_vri()
   pool[16] ^= adc_vrefint;
   pool[17] ^= adc_vri;
 
-if (1) {
+if (0) {
   magical_phase = pool[0] % MAGICAL_N;
   magical_intensity = 65536 / 8;
   __HAL_RCC_TIM3_CLK_ENABLE();
