@@ -108,11 +108,11 @@ lorem ipsum
 
 ====== 28 ======
 lorem ipsum
-文字 Animus
+文字 Guest
 
 ====== 29 ======
 lorem ipsum
-文字 Anima
+文字 Host
 
 ====== 30 ======
 lorem ipsum

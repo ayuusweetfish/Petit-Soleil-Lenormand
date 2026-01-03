@@ -2,7 +2,7 @@
 // ./a.out > cards.bin
 
 /* card_commentary.txt:
-for i, n in enumerate(['Rider', 'Clover', 'Ship', 'House', 'Tree', 'Clouds', 'Snake', 'Coffin', 'Bouquet', 'Scythe', 'Whip', 'Birds', 'Child', 'Fox', 'Bear', 'Stars', 'Stork', 'Dog', 'Tower', 'Garden', 'Mountain', 'Crossroads', 'Mice', 'Heart', 'Ring', 'Book', 'Letter', 'Animus', 'Anima', 'Lily', 'Sun', 'Moon', 'Key', 'Fish', 'Anchor', 'Cross']):
+for i, n in enumerate(['Rider', 'Clover', 'Ship', 'House', 'Tree', 'Clouds', 'Snake', 'Coffin', 'Bouquet', 'Scythe', 'Whip', 'Birds', 'Child', 'Fox', 'Bear', 'Stars', 'Stork', 'Dog', 'Tower', 'Garden', 'Mountain', 'Crossroads', 'Mice', 'Heart', 'Ring', 'Book', 'Letter', 'Guest', 'Host', 'Lily', 'Sun', 'Moon', 'Key', 'Fish', 'Anchor', 'Cross']):
   print('====== %d ======\nlorem ipsum\n文字 %s\n' % (i + 1, n))
 */
 

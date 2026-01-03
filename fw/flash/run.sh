@@ -1,6 +1,5 @@
-cc gen.c -O2 -o gen
+WD=$(mktemp -d)
+echo $WD
 
-./gen ../misc/bitmap_font/wenquanyi_9pt.bin ../../cards/cards.bin flash.gdbinit
-rm gen
-
-# source flash/flash.gdbinit
+cc gen.c -O2 -o $WD/gen
+$WD/gen ../misc/bitmap_font/wenquanyi_9pt.bin ../../cards/cards.bin $WD/flash.gdbinit
