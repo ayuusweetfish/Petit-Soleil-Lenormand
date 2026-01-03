@@ -21,14 +21,14 @@
        cy="{CY}"
        r="14.5" /><text
        id="num"
-       style="font-size:18px;font-family:Mali;font-weight:900;text-anchor:middle;fill:#000000;stroke:#000000;stroke-width:1;stroke-linecap:round;stroke-linejoin:round"
+       style="font-size:18px;font-family:Mali;font-weight:900;text-anchor:middle;fill:#000000;stroke:#000000;stroke-width:0;stroke-linecap:round;stroke-linejoin:round"
        x="{CTX}"
        y="{CTY}">{N}</text><text
        id="name-inner"
-       style="font-size:21px;font-family:Mali;font-weight:600;text-anchor:{A};letter-spacing:{S}px;fill:#ffffff;fill-opacity:1;stroke:#fefefe;stroke-width:6;stroke-linecap:round;stroke-linejoin:round"
+       style="font-size:21px;font-family:Mali;font-weight:900;text-anchor:{A};letter-spacing:{S}px;fill:#ffffff;fill-opacity:1;stroke:#fefefe;stroke-width:6;stroke-linecap:round;stroke-linejoin:round"
        x="{TTX}"
        y="{TTY}">{T}</text><text
        id="name-outer"
-       style="font-size:21px;font-family:Mali;font-weight:600;text-anchor:{A};letter-spacing:{S}px;fill:#000000;stroke:#000000;stroke-width:1;stroke-linecap:round"
+       style="font-size:21px;font-family:Mali;font-weight:900;text-anchor:{A};letter-spacing:{S}px;fill:#000000;stroke:#000000;stroke-width:0;stroke-linecap:round"
        x="{TTX}"
        y="{TTY}">{T}</text></svg>

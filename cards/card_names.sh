@@ -17,31 +17,31 @@ card_names() {
       CX=19
       CY=21.5
       TTX=39
-      TTY=`bc <<< "21.5 + 1.5 + 5.5"`
+      TTY=`bc <<< "21.5 + 8.2"`
       A=start
     elif [ "$side" == "1" ]; then
       CX=`bc <<< "200-19"`
       CY=21.5
       TTX=`bc <<< "200-39"`
-      TTY=`bc <<< "21.5 + 1.5 + 5.5"`
+      TTY=`bc <<< "21.5 + 8.2"`
       A=end
     elif [ "$side" == "2" ]; then
       CX=19
       CY=`bc <<< "40-21.5"`
       TTX=39
-      TTY=`bc <<< "21.5 - 1.5 + 4.8"`
+      TTY=`bc <<< "21.5 + 3.5"`
       A=start
     elif [ "$side" == "3" ]; then
       CX=`bc <<< "200-19"`
       CY=`bc <<< "40-21.5"`
       TTX=`bc <<< "200-39"`
-      TTY=`bc <<< "21.5 - 1.5 + 4.8"`
+      TTY=`bc <<< "21.5 + 3.5"`
       A=end
     else
       echo "Unknown side!"
     fi
     CTX=`bc <<< "$CX"`
-    CTY=`bc <<< "$CY + 5.5"`  # Baseline dependent
+    CTY=`bc <<< "$CY + 5.75"`
     cat card_name_templ.svg \
       | perl -pe "s/{N}/${N}/g" | perl -pe "s/{T}/${T}/g" \
       | perl -pe "s/{A}/${A}/g" \
