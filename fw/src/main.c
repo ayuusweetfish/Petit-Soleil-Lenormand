@@ -19,36 +19,7 @@
 #define EXTI_LINE_BUTTON  EXTI_LINE_2
 #define PIN_PWR_LATCH GPIO_PIN_3
 
-static uint8_t swv_buf[256];
-static size_t swv_buf_ptr = 0;
-__attribute__ ((noinline, used))
-void swv_trap_line()
-{
-  *(volatile char *)swv_buf;
-}
-static inline void swv_putchar(uint8_t c)
-{
-  if (c == '\n') {
-    swv_buf[swv_buf_ptr >= sizeof swv_buf ?
-      (sizeof swv_buf - 1) : swv_buf_ptr] = '\0';
-    swv_trap_line();
-    swv_buf_ptr = 0;
-  } else if (++swv_buf_ptr <= sizeof swv_buf) {
-    swv_buf[swv_buf_ptr - 1] = c;
-  }
-}
-static void swv_printf(const char *restrict fmt, ...)
-{
-  char s[256];
-  va_list args;
-  va_start(args, fmt);
-  int r = vsnprintf(s, sizeof s, fmt, args);
-  for (int i = 0; i < r && i < sizeof s - 1; i++) swv_putchar(s[i]);
-  if (r >= sizeof s) {
-    for (int i = 0; i < 3; i++) swv_putchar('.');
-    swv_putchar('\n');
-  }
-}
+#include "debug_printf.h"
 
 SPI_HandleTypeDef spi1 = { 0 };
 ADC_HandleTypeDef adc1 = { 0 };
@@ -498,11 +469,11 @@ void flash_test_write(uint32_t addr, size_t size)
 
 void flash_test_write_breakpoint()
 {
-  swv_printf("all status = %06x\n", flash_status_all());
+  printf("all status = %06lx\n", flash_status_all());
   if (*(volatile uint32_t *)flash_test_write_buf == 0x11223344) {
     uint8_t data[4] = {1, 2, 3, 4};
     flash_read(0, data, sizeof data);
-    for (int i = 0; i < 4; i++) swv_printf("%d\n", data[i]);
+    for (int i = 0; i < 4; i++) printf("%d\n", data[i]);
     flash_erase_4k(0);
     flash_erase_64k(0);
     flash_erase_chip();
@@ -640,7 +611,7 @@ static inline void entropy_adc(uint32_t *out_v, int n)
   }
   adc_stop();
 
-  // for (int i = 0; i < n; i++) swv_printf("%08x%c", out_v[i], i % 10 == 9 ? '\n' : ' ');
+  // for (int i = 0; i < n; i++) printf("%08lx%c", out_v[i], i % 10 == 9 ? '\n' : ' ');
   // while (1) { }
 }
 
@@ -829,7 +800,7 @@ static inline void entropy_epd_ram(uint32_t *s, int n)
     uint32_t sum = 0;
     for (int j = 0; j < n; j++) sum |= ram[j];
     if (sum == 0) {
-      swv_printf("Read all zeros\n");
+      printf("Read all zeros\n");
     }
   }
   HAL_GPIO_WritePin(GPIOA, PIN_EP_NCS, GPIO_PIN_SET);
@@ -839,7 +810,7 @@ static inline void entropy_epd_ram(uint32_t *s, int n)
   HAL_SPI_Init(&spi1);
 
   epd_cmd(0x7f);
-  // for (int i = 0; i < n; i++) swv_printf("%08x%c", s[i], i == n - 1 ? '\n' : ' ');
+  // for (int i = 0; i < n; i++) printf("%08lx%c", s[i], i == n - 1 ? '\n' : ' ');
 }
 
 #pragma GCC push_options
@@ -1333,7 +1304,7 @@ if (1) {
     uint32_t t1 = HAL_GetTick();
     entropy_jitter(pool, 20);
     uint32_t t2 = HAL_GetTick();
-    swv_printf("%u %u\n", t1 - t0, t2 - t1);  // 8~9 0~1
+    printf("%lu %lu\n", t1 - t0, t2 - t1);  // 8~9 0~1
   }
 }
 
@@ -1352,7 +1323,7 @@ redraw:
   magical_intensity = 0;
   __HAL_RCC_TIM3_CLK_ENABLE();
 
-  swv_printf("tick = %u\n", HAL_GetTick()); // tick = 13
+  printf("tick = %lu\n", HAL_GetTick());  // tick = 13
 
   // ======== Accumulate entropy while the magical lights flash! ========
   const uint32_t sample_interval = 40;

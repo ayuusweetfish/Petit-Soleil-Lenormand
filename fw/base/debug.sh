@@ -26,10 +26,10 @@ define r
   c
 end
 
-b swv_trap_line
+b debug_trap_line
 commands
   silent
-  printf "%s\n", (char *)swv_buf
+  printf "%s\n", (char *)debug_buf
   c
 end
 ${MONITOR_RESET}
