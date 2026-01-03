@@ -1,5 +1,4 @@
-// gcc -O2 -DSTB_IMAGE_IMPLEMENTATION -c -x c stb_image.h
-// gcc -std=c99 all.c stb_image.o
+// gcc -std=c99 all.c -O2 -lm
 // ./a.out > cards.bin
 
 /* card_commentary.txt:
@@ -7,6 +6,7 @@ for i, n in enumerate(['Rider', 'Clover', 'Ship', 'House', 'Tree', 'Clouds', 'Sn
   print('====== %d ======\nlorem ipsum\n文字 %s\n' % (i + 1, n))
 */
 
+#define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"  // stb_image - v2.30 (013ac3b)
 
 #include <ctype.h>

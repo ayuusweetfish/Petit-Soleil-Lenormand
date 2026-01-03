@@ -1,5 +1,5 @@
-# export PATH=$PATH:/Applications/Inkscape.app/Contents/MacOS
-# alias inkscape=/Applications/Inkscape.app/Contents/MacOS/inkscape
+# Depends: rsvg-convert
+# pyftsubset Mali-Bold.ttf --unicodes=30-39,41-5a,61-7a --output-file=fonts/Mali-Bold.ttf
 
 card_names() {
   rm -rf card_names
@@ -17,31 +17,31 @@ card_names() {
       CX=19
       CY=21.5
       TTX=39
-      TTY=13.7
+      TTY=`bc <<< "21.5 + 1.5 + 5.5"`
       A=start
     elif [ "$side" == "1" ]; then
       CX=`bc <<< "200-19"`
       CY=21.5
-      TTX=1
-      TTY=13.7
+      TTX=`bc <<< "200-39"`
+      TTY=`bc <<< "21.5 + 1.5 + 5.5"`
       A=end
     elif [ "$side" == "2" ]; then
       CX=19
       CY=`bc <<< "40-21.5"`
       TTX=39
-      TTY=8   # Baseline dependent
+      TTY=`bc <<< "21.5 - 1.5 + 4.8"`
       A=start
     elif [ "$side" == "3" ]; then
       CX=`bc <<< "200-19"`
       CY=`bc <<< "40-21.5"`
-      TTX=1
-      TTY=8
+      TTX=`bc <<< "200-39"`
+      TTY=`bc <<< "21.5 - 1.5 + 4.8"`
       A=end
     else
       echo "Unknown side!"
     fi
-    CTX=`bc <<< "$CX - 15"`   # w/2
-    CTY=`bc <<< "$CY - 8.5"`  # Baseline dependent
+    CTX=`bc <<< "$CX"`
+    CTY=`bc <<< "$CY + 5.5"`  # Baseline dependent
     cat card_name_templ.svg \
       | perl -pe "s/{N}/${N}/g" | perl -pe "s/{T}/${T}/g" \
       | perl -pe "s/{A}/${A}/g" \
@@ -49,8 +49,8 @@ card_names() {
       | perl -pe "s/{CTX}/${CTX}/g" | perl -pe "s/{CTY}/${CTY}/g" \
       | perl -pe "s/{TTX}/${TTX}/g" | perl -pe "s/{TTY}/${TTY}/g" \
       | perl -pe "s/{S}/${S}/g" \
-      | inkscape --export-filename=$PWD/card_names/$1.png -p
-      # > $PWD/card_names/$1.svg  # For inspection
+      | FONTCONFIG_FILE=$PWD/fonts/fonts.conf rsvg-convert > card_names/$1.png
+      # > /tmp/card_names/$1.svg  # For inspection
   }
 
   card_name  1 0 Rider
