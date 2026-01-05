@@ -105,8 +105,14 @@ fin:
   return c;
 }
 
-int main()
+// Usage: ./all [<card_names_dir>]
+int main(int argc, char *argv[])
 {
+  const char *card_names_dir = "card_names";
+  if (argc >= 2) {
+    card_names_dir = argv[1];
+  }
+
   size_t directions_len;
   uint8_t *directions = read_file("card_directions.txt", &directions_len);
   if (directions_len < 36) {
@@ -163,7 +169,7 @@ int main()
     // Card name direction
     putchar(directions[i] - '0');
 
-    snprintf(path, sizeof path, "card_names/%d.png", i + 1);
+    snprintf(path, sizeof path, "%s/%d.png", card_names_dir, i + 1);
     fprintf(stderr, "  title (%s)\n", path);
     uint8_t *p_name = read_image(path, 200, 40);
     for (int i = 0, byte = 0; i < 200 * 40; i++) {
