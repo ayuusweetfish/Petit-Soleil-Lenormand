@@ -105,23 +105,31 @@ fin:
   return c;
 }
 
-// Usage: ./all [<card_names_dir>]
+// Usage: ./all [<card_metadata_dir> [<card_names_image_dir>]]
 int main(int argc, char *argv[])
 {
-  const char *card_names_dir = "card_names";
+  const char *card_metadata_root = ".";
+  const char *card_names_image_dir = "card_names";
   if (argc >= 2) {
-    card_names_dir = argv[1];
+    card_metadata_root = argv[1];
+    if (argc >= 3) {
+      card_names_image_dir = argv[2];
+    }
   }
 
+  char path[256];
+
   size_t directions_len;
-  uint8_t *directions = read_file("card_directions.txt", &directions_len);
+  snprintf(path, sizeof path, "%s/card_directions.txt", card_metadata_root);
+  uint8_t *directions = read_file(path, &directions_len);
   if (directions_len < 36) {
     fprintf(stderr, "Insufficient directions (less than 36)\n");
     exit(1);
   }
 
   size_t text_len;
-  uint8_t *text = read_file("card_commentary.txt", &text_len);
+  snprintf(path, sizeof path, "%s/card_commentary.txt", card_metadata_root);
+  uint8_t *text = read_file(path, &text_len);
 
   // Find starts
   const uint8_t *cmt_start[36] = { NULL };
@@ -145,10 +153,10 @@ int main(int argc, char *argv[])
   }
 
   for (int i = 0; i < 36; i++) {
-    char path[64];
     fprintf(stderr, "Card %d\n", i + 1);
 
-    snprintf(path, sizeof path, "card_illustrations/%02d_outline.png", i + 1);
+    snprintf(path, sizeof path,
+      "%s/card_illustrations/%02d_outline.png", card_metadata_root, i + 1);
     fprintf(stderr, "  illust (%s)\n", path);
     uint8_t *p_illust = read_image(path, 200, 200);
     for (int i = 0, byte = 0; i < 200 * 200; i++) {
@@ -157,7 +165,8 @@ int main(int argc, char *argv[])
     }
     stbi_image_free(p_illust);
 
-    snprintf(path, sizeof path, "card_illustrations/%02d_shadow.png", i + 1);
+    snprintf(path, sizeof path,
+      "%s/card_illustrations/%02d_shadow.png", card_metadata_root, i + 1);
     fprintf(stderr, "  shadow (%s)\n", path);
     uint8_t *p_shadow = read_image(path, 200, 200);
     for (int i = 0, byte = 0; i < 200 * 200; i++) {
@@ -169,7 +178,7 @@ int main(int argc, char *argv[])
     // Card name direction
     putchar(directions[i] - '0');
 
-    snprintf(path, sizeof path, "%s/%d.png", card_names_dir, i + 1);
+    snprintf(path, sizeof path, "%s/%d.png", card_names_image_dir, i + 1);
     fprintf(stderr, "  title (%s)\n", path);
     uint8_t *p_name = read_image(path, 200, 40);
     for (int i = 0, byte = 0; i < 200 * 40; i++) {
