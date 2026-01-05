@@ -1,10 +1,14 @@
 # Depends: rsvg-convert
 # pyftsubset Mali-Bold.ttf --unicodes=30-39,41-5a,61-7a --output-file=fonts/Mali-Bold.ttf
 
-card_names() {
-  rm -rf card_names
-  mkdir card_names
+wd="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")"
+card_names_dir="$(readlink -f "$1")"
+cd $wd
 
+echo "Script root: $wd"
+echo "Card names: $card_names_dir"
+
+card_names() {
   card_name() {
     N=$1    # Number
     side=$2 # Side
@@ -42,14 +46,14 @@ card_names() {
     fi
     CTX=`bc <<< "$CX"`
     CTY=`bc <<< "$CY + 5.75"`
-    cat card_name_templ.svg \
+    cat $wd/card_name_templ.svg \
       | perl -pe "s/{N}/${N}/g" | perl -pe "s/{T}/${T}/g" \
       | perl -pe "s/{A}/${A}/g" \
       | perl -pe "s/{CX}/${CX}/g" | perl -pe "s/{CY}/${CY}/g" \
       | perl -pe "s/{CTX}/${CTX}/g" | perl -pe "s/{CTY}/${CTY}/g" \
       | perl -pe "s/{TTX}/${TTX}/g" | perl -pe "s/{TTY}/${TTY}/g" \
       | perl -pe "s/{S}/${S}/g" \
-      | FONTCONFIG_FILE=$PWD/fonts/fonts.conf rsvg-convert > card_names/$1.png
+      | FONTCONFIG_FILE=$wd/fonts/fonts.conf rsvg-convert > $card_names_dir/$1.png
       # > /tmp/card_names/$1.svg  # For inspection
   }
 
