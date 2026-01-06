@@ -1,5 +1,7 @@
 #pragma once
 
+#include <stdint.h>
+
 // https://eprint.iacr.org/2018/767.pdf
 // https://github.com/XKCP/XKCP/blob/ade40f8/lib/low/Xoodoo/plain/Xoodoo-optimized.c
 
