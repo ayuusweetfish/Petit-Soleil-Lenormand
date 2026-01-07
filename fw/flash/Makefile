@@ -19,10 +19,10 @@ $(BDIR)/cards.bin: $(BDIR)/cards_all $(BDIR)/card_names ../../cards/card_directi
 	$(word 1, $^) ../../cards $(word 2, $^) > $@
 
 $(BDIR)/gen: gen.c | $(BDIR)
-	$(CC) $< -o $@ -lm
+	$(CC) $< -o $@
 
 $(BDIR)/flash.gdbinit: $(BDIR)/gen $(BDIR)/wenquanyi_9pt.bin $(BDIR)/cards.bin | $(BDIR)
-	$(BDIR)/gen $(BDIR)/wenquanyi_9pt.bin $(BDIR)/cards.bin $@
+	$(BDIR)/gen $(BDIR)/wenquanyi_9pt.bin $(BDIR)/cards.bin $(BDIR)/flash.bin $@
 
 clean:
 	rm -rf $(BDIR)/*

@@ -3,7 +3,7 @@
 #include <stdint.h>
 #include <stdio.h>
 
-static FILE *f_out_gdb;
+static FILE *f_out_bin, *f_out_gdb;
 
 #define PAGE_SIZE (256 * 16)
 
@@ -33,14 +33,23 @@ static inline void flush_gdb_script()
 static inline void add_data(uint8_t data)
 {
   page_buf[page_buf_ptr++] = data;
+  fputc(data, f_out_bin);
   if (page_buf_ptr == PAGE_SIZE) flush_gdb_script();
 }
 
 int main(int argc, char *argv[])
 {
-  if (argc <= 2) {
-    printf("Usage: %s <input> [<input> ...] <output-gdbinit>\n", argv[0]);
+  if (argc <= 3) {
+    printf("Usage: %s <input> [<input> ...] <output-bin> <output-gdbinit>\n", argv[0]);
     return 0;
+  }
+
+  const char *path_out_bin = argv[argc - 2];
+  f_out_bin = fopen(path_out_bin, "wb");
+  fprintf(stderr, "Writing binary image to %s\n", path_out_bin);
+  if (f_out_bin == NULL) {
+    fprintf(stderr, "Cannot open %s for writing\n", path_out_bin);
+    return 1;
   }
 
   const char *path_out_gdb = argv[argc - 1];
@@ -57,7 +66,7 @@ int main(int argc, char *argv[])
 
   fprintf(f_out_gdb, "set pagination off\n");
 
-  int in_count = argc - 2;
+  int in_count = argc - 3;
   for (int i = 0; i < in_count; i++) {
     const char *path_in = argv[1 + i];
     FILE *f_in = fopen(path_in, "rb");
@@ -104,6 +113,7 @@ int main(int argc, char *argv[])
   // fprintf(f_out_gdb, "end\n");
   // fprintf(f_out_gdb, "r\n");
 
+  fclose(f_out_bin);
   fclose(f_out_gdb);
 
   return 0;
