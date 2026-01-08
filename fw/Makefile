@@ -139,12 +139,18 @@ $(BDIR)/$(PROJECT).elf: $(OBJS) $(TOP)/$(LDSCRIPT)
 clean:
 	rm -rf $(BDIR)/*
 
-flash: all
-	$(PYOCD_EXE) cmd -v -c 'erase; load $(BDIR)/$(PROJECT).bin; reset' -t $(PYOCD_DEVICE) --config $(TOP)/base/pyocd.yml
+$(BDIR)/pyocd.yml:
+	echo 'pack: [base/Keil.STM32G0xx_DFP.2.1.0.pack]' > $@
+
+flash: all $(BDIR)/pyocd.yml
+	$(PYOCD_EXE) cmd -v -c 'erase; load $(BDIR)/$(PROJECT).bin; reset' -t $(PYOCD_DEVICE) --config $(BDIR)/pyocd.yml
 
 debug: all
 	# make debug c=1
 	@bash base/debug.sh $(BDIR)/$(PROJECT).elf c=$(c)
 
-debug-server:
-	$(PYOCD_EXE) gdb --elf $(BDIR)/$(PROJECT).elf -t $(PYOCD_DEVICE) --config $(TOP)/base/pyocd.yml --persist
+debug-server: $(BDIR)/pyocd.yml
+	$(PYOCD_EXE) gdb --elf $(BDIR)/$(PROJECT).elf -t $(PYOCD_DEVICE) --config $(BDIR)/pyocd.yml --persist
+
+print-uid: $(BDIR)/pyocd.yml
+	$(PYOCD_EXE) cmd -c 'read8 0x1fff7590 12' -t $(PYOCD_DEVICE) --config $(BDIR)/pyocd.yml
