@@ -79,23 +79,47 @@ static inline void spin_delay(uint32_t cycles)
 #pragma GCC optimize("O3")
 static inline void spi_transmit(const uint8_t *data, size_t size)
 {
-  HAL_SPI_Transmit(&spi1, (uint8_t *)data, size, 1000); return;
-/*
-  for (int i = 0; i < size; i++) {
-    while (!(SPI1->SR & SPI_SR_TXE)) { }
-    SPI1->DR = data[i];
+  if (size == 0) return;
+  if (SPI1->CR1 & SPI_CR1_BIDIMODE) {
+    SPI1->CR1 |= (SPI_CR1_BIDIOE | SPI_CR1_SPE);
+    for (int i = 0; i < size; i++) {
+      while (!(SPI1->SR & SPI_SR_TXE)) { }
+      *(volatile uint8_t *)&SPI1->DR = data[i];
+    }
+    while ((SPI1->SR & SPI_SR_BSY)) { }
+  } else {
+    SPI1->CR1 |= SPI_CR1_SPE;
+    for (int i = 0; i < size; i++) {
+      while (!(SPI1->SR & SPI_SR_TXE)) { }
+      *(volatile uint8_t *)&SPI1->DR = data[i];
+      while (!(SPI1->SR & SPI_SR_RXNE)) { }
+      (void)*(volatile uint8_t *)SPI1->DR;
+    }
+    while ((SPI1->SR & SPI_SR_BSY)) { }
   }
-  while (!(SPI1->SR & SPI_SR_TXE)) { }
-  while ((SPI1->SR & SPI_SR_BSY)) { }
-  // Clear OVR flag
-  (void)SPI1->DR;
-  (void)SPI1->SR;
-*/
 }
 
 static inline void spi_receive(uint8_t *data, size_t size)
 {
-  HAL_SPI_Receive(&spi1, data, size, 1000); return;
+  if (size == 0) return;
+  if (SPI1->CR1 & SPI_CR1_BIDIMODE) {
+    SPI1->CR1 = (SPI1->CR1 & ~SPI_CR1_BIDIOE) | SPI_CR1_SPE;
+    for (int i = 0; i < size; i++) {
+      while (!(SPI1->SR & SPI_SR_RXNE)) { }
+      if (i == size - 1) SPI1->CR1 &= ~SPI_CR1_SPE;
+      data[i] = *(volatile uint8_t *)&SPI1->DR;
+    }
+    while ((SPI1->SR & SPI_SR_BSY)) { }
+  } else {
+    SPI1->CR1 |= SPI_CR1_SPE;
+    for (int i = 0; i < size; i++) {
+      while (!(SPI1->SR & SPI_SR_TXE)) { }
+      *(volatile uint8_t *)&SPI1->DR = 0xff;
+      while (!(SPI1->SR & SPI_SR_RXNE)) { }
+      data[i] = *(volatile uint8_t *)&SPI1->DR;
+    }
+    while ((SPI1->SR & SPI_SR_BSY)) { }
+  }
 }
 
 static inline void _epd_cmd(uint8_t cmd, const uint8_t *params, size_t params_size)
@@ -435,7 +459,6 @@ void flash_read(uint32_t addr, uint8_t *data, size_t size)
   flash_cmd_bi_sized(op_read_data, sizeof op_read_data, data, size);
 }
 
-// TODO: Replace this with direct register access (SPIx->DR)
 #define flash_read_op(_name, _op) \
 void flash_read_##_name(uint32_t addr, uint8_t *data, size_t size) \
 { \
