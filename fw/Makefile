@@ -143,7 +143,7 @@ $(BDIR)/pyocd.yml:
 	echo 'pack: [base/Keil.STM32G0xx_DFP.2.1.0.pack]' > $@
 
 flash: all $(BDIR)/pyocd.yml
-	$(PYOCD_EXE) cmd -v -c 'erase; load $(BDIR)/$(PROJECT).bin; reset' -t $(PYOCD_DEVICE) --config $(BDIR)/pyocd.yml
+	$(PYOCD_EXE) cmd -v -c 'reset halt; erase; load $(BDIR)/$(PROJECT).bin; reset' -t $(PYOCD_DEVICE) --config $(BDIR)/pyocd.yml
 
 debug: all
 	# make debug c=1
