@@ -103,6 +103,7 @@ static inline void spi_receive(uint8_t *data, size_t size)
 {
   if (size == 0) return;
   if (SPI1->CR1 & SPI_CR1_BIDIMODE) {
+    // SPI1->CR2 |= SPI_CR2_FRXTH;  // Already set
     SPI1->CR1 = (SPI1->CR1 & ~SPI_CR1_BIDIOE) | SPI_CR1_SPE;
     for (int i = 0; i < size; i++) {
       while (!(SPI1->SR & SPI_SR_RXNE)) { }
@@ -110,6 +111,8 @@ static inline void spi_receive(uint8_t *data, size_t size)
       data[i] = *(volatile uint8_t *)&SPI1->DR;
     }
     while ((SPI1->SR & SPI_SR_BSY)) { }
+    while ((SPI1->SR & SPI_SR_FRLVL) != 0x0)
+      (void)*(volatile uint8_t *)&SPI1->DR;
   } else {
     SPI1->CR1 |= SPI_CR1_SPE;
     for (int i = 0; i < size; i++) {
