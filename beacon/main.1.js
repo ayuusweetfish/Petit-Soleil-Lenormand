@@ -27,7 +27,7 @@ const fetchImage = async (url, modifiedAfter, modifiedBefore) => {
 }
 
 // Fengyun-4B (2021), -2H (2018), etc.
-const src_fy_geostationary = (type) => async (timestamp) => {
+const src_fy_geos = (type) => async (timestamp) => {
   timestamp -= timestamp % (60 * 60000)
   const date = new Date(timestamp)
   const dateStr =
@@ -38,9 +38,9 @@ const src_fy_geostationary = (type) => async (timestamp) => {
   const payload = await fetchImage(`https://img.nsmc.org.cn/CLOUDIMAGE/GEOS/MOS/${type}/PIC/GBAL/${dateStr}/GEOS_IMAGR_GBAL_L2_MOS_${type}_GLL_${dateStr}_${hourStr}00_10KM_MS.jpg`)
   return payload
 }
-const src_fy_geostationary_ir = src_fy_geostationary('IRX')
-const src_fy_geostationary_wv = src_fy_geostationary('WVX')
-const src_fy4b_disk = async (timestamp) => {
+const src_fy_geos_ir = src_fy_geos('IRX')
+const src_fy_geos_wv = src_fy_geos('WVX')
+const src_fy4b_color = async (timestamp) => {
   timestamp -= timestamp % (15 * 60000)
   const date = new Date(timestamp)
   const dateStr =
@@ -52,9 +52,20 @@ const src_fy4b_disk = async (timestamp) => {
   const payload = await fetchImage(`https://img.nsmc.org.cn/CLOUDIMAGE/FY4B/AGRI/GCLR/DISK/FY4B-_AGRI--_N_DISK_1050E_L2-_GCLR_MULT_NOM_${dateStr}${hourStr}${minute.toString().padStart(2, '0')}00_${dateStr}${hourStr}${minute + 14}59_1000M_V0001.JPG`)
   return payload
 }
+const src_fy2h_color = async (timestamp) => {
+  timestamp -= timestamp % (60 * 60000)
+  const date = new Date(timestamp)
+  const dateStr =
+    date.getUTCFullYear().toString() +
+    (date.getUTCMonth() + 1).toString().padStart(2, '0') +
+    date.getUTCDate().toString().padStart(2, '0')
+  const hourStr = date.getUTCHours().toString().padStart(2, '0')
+  const payload = await fetchImage(`https://img.nsmc.org.cn/CLOUDIMAGE/FY2H/NOM/ETV/FY2H_ETV_NOM_${dateStr}_${hourStr}00.jpg`)
+  return payload
+}
 
 // GOES-19 (2024)
-const src_goes19_noaa = async (timestamp) => {
+const src_goes = (sat) => async (timestamp) => {
   timestamp -= timestamp % (10 * 60000)
   const date = new Date(timestamp)
   const dayOfYear = Math.floor((date - Date.UTC(date.getUTCFullYear(), 0, 0)) / 86400_000)
@@ -64,9 +75,11 @@ const src_goes19_noaa = async (timestamp) => {
   const hourMinStr =
     date.getUTCHours().toString().padStart(2, '0') +
     date.getUTCMinutes().toString().padStart(2, '0')
-  const payload = await fetchImage(`https://cdn.star.nesdis.noaa.gov/GOES19/ABI/FD/GEOCOLOR/${yearDayStr}${hourMinStr}_GOES19-ABI-FD-GEOCOLOR-1808x1808.jpg`)
+  const payload = await fetchImage(`https://cdn.star.nesdis.noaa.gov/${sat}/ABI/FD/GEOCOLOR/${yearDayStr}${hourMinStr}_${sat}-ABI-FD-GEOCOLOR-1808x1808.jpg`)
   return payload
 }
+const src_goes19 = src_goes('GOES19')
+const src_goes18 = src_goes('GOES18')
 
 // Himawari-9 (2016)
 const src_himawari = (type) => async (timestamp) => {
@@ -76,12 +89,13 @@ const src_himawari = (type) => async (timestamp) => {
     date.getUTCHours().toString().padStart(2, '0') +
     date.getUTCMinutes().toString().padStart(2, '0')
   const payload = await fetchImage(`https://www.data.jma.go.jp/mscweb/data/himawari/img/fd_/fd__${type}_${hourMinStr}.jpg`,
-    new Date(timestamp - 60 * 60000),
-    new Date(timestamp + 60 * 60000))
+    new Date(timestamp - 120 * 60000),
+    new Date(timestamp + 120 * 60000))
   return payload
 }
 const src_himawari_b13 = src_himawari('b13')
-const src_himawari_trm = src_himawari('trm')
+const src_himawari_b08 = src_himawari('b08')
+const src_himawari_tcr = src_himawari('trm')
 
 // Meteosat Second Generation (2015, etc.), Third Generation (2025, etc.)
 const src_meteosat = (type) => async (timestamp) => {
@@ -93,7 +107,7 @@ const src_meteosat_ir105 = src_meteosat('mtg_fd:ir105_hrfi')
 const src_meteosat_ir039 = src_meteosat('msg_fes:ir039')
 
 // INSAT-3DS (2024)
-const src_imd = (type) => async (timestamp) => {
+const src_insat = (type) => async (timestamp) => {
   timestamp -= timestamp % (30 * 60000)
   const date = new Date(timestamp)
   const yearStr = date.getUTCFullYear().toString()
@@ -106,8 +120,8 @@ const src_imd = (type) => async (timestamp) => {
   const minuteStr = date.getUTCMinutes().toString().padStart(2, '0')
   return await fetchImage(`https://mosdac.gov.in/look/3S_IMG/preview/${yearStr}/${monthDayStr}/3SIMG_${monthDayStr}${yearStr}_${hourStr}${minuteStr}_L1B_STD_${type}_V01R00.jpg`)
 }
-const src_imd_ir1 = src_imd('IR1')
-const src_imd_mir = src_imd('MIR')
+const src_insat_ir1 = src_insat('IR1')
+const src_insat_mir = src_insat('MIR')
 
 // GEO-KOMPSAT 2A (2018)
 const src_gk2a = (type) => async (timestamp) => {
@@ -139,24 +153,29 @@ const src_elektro_l = (type) => async (timestamp) => {
 }
 const src_elektro_l2 = src_elektro_l('splash')
 const src_elektro_l3 = src_elektro_l('splash_l3')
+const src_elektro_l4 = src_elektro_l('splash_l4')
 
 const sources = {
-  'FY Geostationary IR 10.8u': src_fy_geostationary_ir,
-  'FY Geostationary WV 7u': src_fy_geostationary_wv,
-  'FY-4B Geo Color': src_fy4b_disk,
-  'GOES-19 GeoColor': src_goes19_noaa,
-  'Himawari-9 IR B13': src_himawari_b13,
-  'Himawari-9 True Color Reproduction': src_himawari_trm,
+  'FY Geostationary IR 10.8u': src_fy_geos_ir,
+  'FY Geostationary WV 7u': src_fy_geos_wv,
+  'FY-4B Geo Color': src_fy4b_color,
+  'FY-2H IR1 Color': src_fy2h_color,
+  'GOES-19 GeoColor': src_goes19,
+  'GOES-18 GeoColor': src_goes18,
+  'Himawari IR B13': src_himawari_b13,
+  'Himawari WV B08': src_himawari_b08,
+  'Himawari TCR': src_himawari_tcr,
   'Meteosat IR 10.5u': src_meteosat_ir105,
   'Meteosat IR 0.39u': src_meteosat_ir039,
-  'INSAT-3DS IR1 10.8u': src_imd_ir1,
-  'INSAT-3DS MIR 3.9u': src_imd_mir,
+  'INSAT-3DS IR1 10.8u': src_insat_ir1,
+  'INSAT-3DS MIR 3.9u': src_insat_mir,
   'GK2A RGB DAYNIGHT': src_gk2a_rgb_daynight,
   'GK2A IR 8.7u': src_gk2a_ir087,
   'Elektro-L 2': src_elektro_l2,
   'Elektro-L 3': src_elektro_l3,
+  'Elektro-L 4': src_elektro_l4,
 }
 
 const t = +new Date('2026-06-28T06:00:00.000Z')
 // await Promise.all(Object.entries(sources).map(([key, fn]) => fn(t)))
-for (const [key, fn] of Object.entries(sources)) if (key.startsWith('Met')) await fn(t)
+for (const [key, fn] of Object.entries(sources)) if (key.startsWith('FY')) await fn(t)
