@@ -1,3 +1,7 @@
+import { createHash } from 'node:crypto'
+
+const sha3_224 = (a) => createHash('sha3-224').update(a).digest()
+
 const fetchImage = async (url, modifiedAfter, modifiedBefore) => {
   console.log(`> ${url}`)
   const resp = await fetch(url)
@@ -183,4 +187,4 @@ const sources = {
 
 const t = +new Date('2026-06-28T06:00:00.000Z')
 // await Promise.all(Object.entries(sources).map(([key, fn]) => fn(t)))
-for (const [key, fn] of Object.entries(sources)) if (key.startsWith('Ark')) await fn(t)
+for (const [key, fn] of Object.entries(sources)) console.log(sha3_224(await fn(t)).toHex())
