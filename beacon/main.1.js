@@ -138,8 +138,9 @@ const src_gk2a = (type) => async (timestamp) => {
 const src_gk2a_rgb_daynight = src_gk2a('rgb-daynight')
 const src_gk2a_ir087 = src_gk2a('ir087')
 
-// Elektro-L2 (2015), -L3 (2019), -L4 (2023)
-const src_elektro_l = (type) => async (timestamp) => {
+// Elektro-L 2 (2015), 3 (2019), 4 (2023)
+// Arktika-M 1 (2021), 2 (2023)
+const src_ntsomz = (series, type) => async (timestamp) => {
   timestamp -= timestamp % (30 * 60000)
   timestamp += 3 * 60 * 60000   // In UTC+3
   const date = new Date(timestamp)
@@ -151,9 +152,11 @@ const src_elektro_l = (type) => async (timestamp) => {
     date.getUTCMinutes().toString().padStart(2, '0')
   return await fetchImage(`https://electro.ntsomz.ru/i/${type}/${dateTimeStr}.jpg`)
 }
-const src_elektro_l2 = src_elektro_l('splash')
-const src_elektro_l3 = src_elektro_l('splash_l3')
-const src_elektro_l4 = src_elektro_l('splash_l4')
+const src_elektro_l_2 = src_ntsomz('electro', 'splash')
+const src_elektro_l_3 = src_ntsomz('electro', 'splash_l3')
+const src_elektro_l_4 = src_ntsomz('electro', 'splash_l4')
+const src_arktika_m_1 = src_ntsomz('arctic', 'splash')
+const src_arktika_m_2 = src_ntsomz('arctic', 'splash_a2')
 
 const sources = {
   'FY Geostationary IR 10.8u': src_fy_geos_ir,
@@ -171,11 +174,13 @@ const sources = {
   'INSAT-3DS MIR 3.9u': src_insat_mir,
   'GK2A RGB DAYNIGHT': src_gk2a_rgb_daynight,
   'GK2A IR 8.7u': src_gk2a_ir087,
-  'Elektro-L 2': src_elektro_l2,
-  'Elektro-L 3': src_elektro_l3,
-  'Elektro-L 4': src_elektro_l4,
+  'Elektro-L 2': src_elektro_l_2,
+  'Elektro-L 3': src_elektro_l_3,
+  'Elektro-L 4': src_elektro_l_4,
+  'Arktika-M 1': src_arktika_m_1,
+  'Arktika-M 2': src_arktika_m_2,
 }
 
 const t = +new Date('2026-06-28T06:00:00.000Z')
 // await Promise.all(Object.entries(sources).map(([key, fn]) => fn(t)))
-for (const [key, fn] of Object.entries(sources)) if (key.startsWith('FY')) await fn(t)
+for (const [key, fn] of Object.entries(sources)) if (key.startsWith('Ark')) await fn(t)
