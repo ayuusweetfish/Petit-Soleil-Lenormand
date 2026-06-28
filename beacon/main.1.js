@@ -5,20 +5,24 @@ const fetchImage = async (url, modifiedAfter, modifiedBefore) => {
     new Date(resp.headers.get('Last-Modified')) : undefined)
   if (modifiedAfter !== undefined || modifiedBefore !== undefined) {
     if (modifiedAt === undefined) {
-      throw new Error(`! ${url} -> Do not know when last modified (${url})`)
+      throw new Error(`! ${url} -> Do not know when last modified`)
     }
     if ((modifiedAfter && modifiedAt < modifiedAfter) ||
         (modifiedBefore && modifiedAt > modifiedBefore)) {
-      throw new Error(`! ${url} -> Modification timestamp ${modifiedAt.toISOString()} not in ${modifiedAfter.toISOString()}/${modifiedBefore.toISOString()} (${url})`)
+      throw new Error(`! ${url} -> Modification timestamp ` +
+        `${modifiedAt.toISOString()} not in ` +
+        `${modifiedAfter.toISOString()}/${modifiedBefore.toISOString()}`)
     }
   }
   const payload = await resp.blob()
   if (resp.status >= 400 || !payload.type.startsWith('image/')) {
-    throw new Error(`! ${url} -> Received status ${resp.status}, type ${payload.type} (${url})`)
+    throw new Error(`! ${url} -> Received status ` +
+      `${resp.status}, type ${payload.type}`)
   }
   const arr = new Uint8Array(await payload.arrayBuffer())
   arr._url = url
-  console.log(`* ${url} -> size ${arr.length}, modification ${modifiedAt.toISOString()}`)
+  console.log(`* ${url} -> size ${arr.length}, modification ` +
+    `${modifiedAt ? modifiedAt.toISOString() : 'not given'}`)
   return arr
 }
 
@@ -79,6 +83,15 @@ const src_himawari = (type) => async (timestamp) => {
 const src_himawari_b13 = src_himawari('b13')
 const src_himawari_trm = src_himawari('trm')
 
+// Meteosat Second Generation (2015, etc.), Third Generation (2025, etc.)
+const src_meteosat = (type) => async (timestamp) => {
+  const date = new Date(timestamp)
+  const dateTimeStr = date.toISOString()
+  return await fetchImage(`https://view.eumetsat.int/geoserver/wms?service=WMS&version=1.3.0&request=GetMap&layers=${type},backgrounds:ne_10m_coastline&styles=&format=image/jpeg&srs=AUTO:97004,9001,0,0&bbox=-5450000,-5450000,5450000,5450000&width=1800&height=1800&time=${dateTimeStr}`)
+}
+const src_meteosat_ir105 = src_meteosat('mtg_fd:ir105_hrfi')
+const src_meteosat_ir039 = src_meteosat('msg_fes:ir039')
+
 // INSAT-3DS (2024)
 const src_imd = (type) => async (timestamp) => {
   timestamp -= timestamp % (30 * 60000)
@@ -134,6 +147,8 @@ const sources = {
   'GOES-19 GeoColor': src_goes19_noaa,
   'Himawari-9 IR B13': src_himawari_b13,
   'Himawari-9 True Color Reproduction': src_himawari_trm,
+  'Meteosat IR 10.5u': src_meteosat_ir105,
+  'Meteosat IR 0.39u': src_meteosat_ir039,
   'INSAT-3DS IR1 10.8u': src_imd_ir1,
   'INSAT-3DS MIR 3.9u': src_imd_mir,
   'GK2A RGB DAYNIGHT': src_gk2a_rgb_daynight,
@@ -144,4 +159,4 @@ const sources = {
 
 const t = +new Date('2026-06-28T06:00:00.000Z')
 // await Promise.all(Object.entries(sources).map(([key, fn]) => fn(t)))
-for (const [key, fn] of Object.entries(sources)) await fn(t)
+for (const [key, fn] of Object.entries(sources)) if (key.startsWith('Met')) await fn(t)
