@@ -4,23 +4,24 @@ const sha3_224 = (a) => createHash('sha3-224').update(a).digest()
 
 const parallelOracle = (N, local, files) => {
   const a = new Uint8Array(N)
-  const l = local.slice()
   for (let i = 0; i < N / 64; i++) {
     const h = createHash('sha3-512')
-    l[0] = (local[0] + i) % 256
-    h.update(l)
+    h.update(new Uint8Array([(local[0] + i) % 256]))
+    h.update(local.subarray(1))
     for (const f of files) h.update(f)
     a.set(h.digest(), 64 * i)
   }
   return a
 }
-if (0) {
-  console.log(parallelOracle(4096,
+
+Deno.test('parallelOracle', () => {
+  const output = parallelOracle(4096,
     new Uint8Array([0x15, 0xb0, 0x3a, 0xb5, 0xe6, 0x93, 0x43, 0xbb, 0xf8, 0xc2, 0xb4, 0x67, 0xaf, 0x2b, 0xe0, 0x78, 0xf0, 0x4f, 0x6d, 0x63, 0xef, 0x4c, 0x96, 0xe1, 0xe2, 0xdb, 0xc4, 0x64, 0xcc, 0x2d, 0xe7, 0xc1, 0xc7, 0x54, 0x19, 0x06, 0xcf, 0x40, 0x31, 0x11, 0x69, 0x78, 0x16, 0x5b, 0x50, 0x68, 0x0f, 0x7f, 0x11, 0x29, 0xab, 0x41, 0xc8, 0x0e, 0xb1, 0x80, 0xa1, 0xab, 0x7a, 0x2a, 0xf5, 0x6b, 0x64, 0xfe]),
-    [new TextEncoder().encode('hello')]
-  ).toHex())
-  Deno.exit(0)
-}
+    [new TextEncoder().encode('hel'), new TextEncoder().encode('lo')]
+  )
+  if (output.toHex().substring(0, 8) !== 'daa90909') throw new Error('-')
+  if (output.toHex().substring(8192 - 8) !== '7057e87e') throw new Error('-')
+})
 
 const fetchImage = async (url, modifiedAfter, modifiedBefore) => {
   console.log(`> ${url}`)
@@ -29,22 +30,23 @@ const fetchImage = async (url, modifiedAfter, modifiedBefore) => {
     new Date(resp.headers.get('Last-Modified')) : undefined)
   if (modifiedAfter !== undefined || modifiedBefore !== undefined) {
     if (modifiedAt === undefined) {
-      throw new Error(`! ${url} -> Do not know when last modified`)
+      throw new Error(`Do not know when last modified (${url})`)
     }
     if ((modifiedAfter && modifiedAt < modifiedAfter) ||
         (modifiedBefore && modifiedAt > modifiedBefore)) {
-      throw new Error(`! ${url} -> Modification timestamp ` +
+      throw new Error(`Modification timestamp ` +
         `${modifiedAt.toISOString()} not in ` +
-        `${modifiedAfter.toISOString()}/${modifiedBefore.toISOString()}`)
+        `${modifiedAfter.toISOString()}/${modifiedBefore.toISOString()} (${url})`)
     }
   }
   const payload = await resp.blob()
   if (resp.status >= 400 || !payload.type.startsWith('image/')) {
-    throw new Error(`! ${url} -> Received status ` +
-      `${resp.status}, type ${payload.type}`)
+    throw new Error(`Received status ` +
+      `${resp.status}, type ${payload.type} (${url})`)
   }
   const arr = new Uint8Array(await payload.arrayBuffer())
   arr._url = url
+  arr._modifiedAt = modifiedAt
   console.log(`* ${url} -> size ${arr.length}, modification ` +
     `${modifiedAt ? modifiedAt.toISOString() : 'not given'}`)
   return arr
