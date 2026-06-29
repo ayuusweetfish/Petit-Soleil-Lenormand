@@ -25,31 +25,35 @@ Deno.test('parallelOracle', () => {
 
 const fetchImage = async (url, modifiedAfter, modifiedBefore) => {
   console.log(`> ${url}`)
-  const resp = await fetch(url)
-  const modifiedAt = (resp.headers.has('Last-Modified') ?
-    new Date(resp.headers.get('Last-Modified')) : undefined)
-  if (modifiedAfter !== undefined || modifiedBefore !== undefined) {
-    if (modifiedAt === undefined) {
-      throw new Error(`Do not know when last modified (${url})`)
+  try {
+    const resp = await fetch(url, { signal: AbortSignal.timeout(60000) })
+    const modifiedAt = (resp.headers.has('Last-Modified') ?
+      new Date(resp.headers.get('Last-Modified')) : undefined)
+    if (modifiedAfter !== undefined || modifiedBefore !== undefined) {
+      if (modifiedAt === undefined) {
+        throw new Error(`Do not know when last modified`)
+      }
+      if ((modifiedAfter && modifiedAt < modifiedAfter) ||
+          (modifiedBefore && modifiedAt > modifiedBefore)) {
+        throw new Error(`Modification timestamp ` +
+          `${modifiedAt.toISOString()} not in ` +
+          `${modifiedAfter.toISOString()}/${modifiedBefore.toISOString()}`)
+      }
     }
-    if ((modifiedAfter && modifiedAt < modifiedAfter) ||
-        (modifiedBefore && modifiedAt > modifiedBefore)) {
-      throw new Error(`Modification timestamp ` +
-        `${modifiedAt.toISOString()} not in ` +
-        `${modifiedAfter.toISOString()}/${modifiedBefore.toISOString()} (${url})`)
+    const payload = await resp.blob()
+    if (resp.status >= 400 || !payload.type.startsWith('image/')) {
+      throw new Error(`Received status ` +
+        `${resp.status}, type ${payload.type}`)
     }
+    const arr = new Uint8Array(await payload.arrayBuffer())
+    arr._url = url
+    arr._modifiedAt = modifiedAt
+    console.log(`* ${url} -> size ${arr.length}, modification ` +
+      `${modifiedAt ? modifiedAt.toISOString() : 'not given'}`)
+    return arr
+  } catch (e) {
+    throw new Error(`${e.message} (${url})`)
   }
-  const payload = await resp.blob()
-  if (resp.status >= 400 || !payload.type.startsWith('image/')) {
-    throw new Error(`Received status ` +
-      `${resp.status}, type ${payload.type} (${url})`)
-  }
-  const arr = new Uint8Array(await payload.arrayBuffer())
-  arr._url = url
-  arr._modifiedAt = modifiedAt
-  console.log(`* ${url} -> size ${arr.length}, modification ` +
-    `${modifiedAt ? modifiedAt.toISOString() : 'not given'}`)
-  return arr
 }
 
 // Fengyun-4B (2021), -2H (2018), etc.
@@ -61,8 +65,7 @@ const src_fy_geos = (type) => async (timestamp) => {
     (date.getUTCMonth() + 1).toString().padStart(2, '0') +
     date.getUTCDate().toString().padStart(2, '0')
   const hourStr = date.getUTCHours().toString().padStart(2, '0')
-  const payload = await fetchImage(`https://img.nsmc.org.cn/CLOUDIMAGE/GEOS/MOS/${type}/PIC/GBAL/${dateStr}/GEOS_IMAGR_GBAL_L2_MOS_${type}_GLL_${dateStr}_${hourStr}00_10KM_MS.jpg`)
-  return payload
+  return await fetchImage(`https://img.nsmc.org.cn/CLOUDIMAGE/GEOS/MOS/${type}/PIC/GBAL/${dateStr}/GEOS_IMAGR_GBAL_L2_MOS_${type}_GLL_${dateStr}_${hourStr}00_10KM_MS.jpg`)
 }
 const src_fy_geos_ir = src_fy_geos('IRX')
 const src_fy_geos_wv = src_fy_geos('WVX')
@@ -75,8 +78,7 @@ const src_fy4b_color = async (timestamp) => {
     date.getUTCDate().toString().padStart(2, '0')
   const hourStr = date.getUTCHours().toString().padStart(2, '0')
   const minute = date.getUTCMinutes()
-  const payload = await fetchImage(`https://img.nsmc.org.cn/CLOUDIMAGE/FY4B/AGRI/GCLR/DISK/FY4B-_AGRI--_N_DISK_1050E_L2-_GCLR_MULT_NOM_${dateStr}${hourStr}${minute.toString().padStart(2, '0')}00_${dateStr}${hourStr}${minute + 14}59_1000M_V0001.JPG`)
-  return payload
+  return await fetchImage(`https://img.nsmc.org.cn/CLOUDIMAGE/FY4B/AGRI/GCLR/DISK/FY4B-_AGRI--_N_DISK_1050E_L2-_GCLR_MULT_NOM_${dateStr}${hourStr}${minute.toString().padStart(2, '0')}00_${dateStr}${hourStr}${minute + 14}59_1000M_V0001.JPG`)
 }
 const src_fy2h_color = async (timestamp) => {
   timestamp -= timestamp % (60 * 60000)
@@ -86,8 +88,7 @@ const src_fy2h_color = async (timestamp) => {
     (date.getUTCMonth() + 1).toString().padStart(2, '0') +
     date.getUTCDate().toString().padStart(2, '0')
   const hourStr = date.getUTCHours().toString().padStart(2, '0')
-  const payload = await fetchImage(`https://img.nsmc.org.cn/CLOUDIMAGE/FY2H/NOM/ETV/FY2H_ETV_NOM_${dateStr}_${hourStr}00.jpg`)
-  return payload
+  return await fetchImage(`https://img.nsmc.org.cn/CLOUDIMAGE/FY2H/NOM/ETV/FY2H_ETV_NOM_${dateStr}_${hourStr}00.jpg`)
 }
 
 // GOES-19 (2024)
@@ -101,8 +102,7 @@ const src_goes = (sat) => async (timestamp) => {
   const hourMinStr =
     date.getUTCHours().toString().padStart(2, '0') +
     date.getUTCMinutes().toString().padStart(2, '0')
-  const payload = await fetchImage(`https://cdn.star.nesdis.noaa.gov/${sat}/ABI/FD/GEOCOLOR/${yearDayStr}${hourMinStr}_${sat}-ABI-FD-GEOCOLOR-1808x1808.jpg`)
-  return payload
+  return await fetchImage(`https://cdn.star.nesdis.noaa.gov/${sat}/ABI/FD/GEOCOLOR/${yearDayStr}${hourMinStr}_${sat}-ABI-FD-GEOCOLOR-1808x1808.jpg`)
 }
 const src_goes19 = src_goes('GOES19')
 const src_goes18 = src_goes('GOES18')
@@ -114,10 +114,9 @@ const src_himawari = (type) => async (timestamp) => {
   const hourMinStr =
     date.getUTCHours().toString().padStart(2, '0') +
     date.getUTCMinutes().toString().padStart(2, '0')
-  const payload = await fetchImage(`https://www.data.jma.go.jp/mscweb/data/himawari/img/fd_/fd__${type}_${hourMinStr}.jpg`,
+  return await fetchImage(`https://www.data.jma.go.jp/mscweb/data/himawari/img/fd_/fd__${type}_${hourMinStr}.jpg`,
     new Date(timestamp - 120 * 60000),
     new Date(timestamp + 120 * 60000))
-  return payload
 }
 const src_himawari_b13 = src_himawari('b13')
 const src_himawari_b08 = src_himawari('b08')
@@ -207,6 +206,37 @@ const sources = {
   'Arktika-M 2': src_arktika_m_2,
 }
 
-const t = +new Date('2026-06-28T06:00:00.000Z')
-// await Promise.all(Object.entries(sources).map(([key, fn]) => fn(t)))
-for (const [key, fn] of Object.entries(sources)) console.log(sha3_224(await fn(t)).toHex())
+if (0) {
+  const t = +new Date('2026-06-28T06:00:00.000Z')
+  for (const [key, fn] of Object.entries(sources)) console.log(sha3_224(await fn(t)).toHex())
+}
+
+const zip = (...as) => [...as[0]].map((_, i) => as.map((a) => a[i]))
+
+const currentPulseTimestamp = () => {
+  const timestamp = Date.now() - 120 * 60000
+  return timestamp - timestamp % (60 * 60000)
+}
+const latestPulseTimestamp = () => currentPulseTimestamp()
+
+const current = {}
+
+const updateMissingInCurrent = async (timestamp) => {
+  const promises = Object.entries(sources).map(
+    ([key, fn]) => current[key] === undefined ? fn(timestamp) : null
+  )
+  const results = await Promise.allSettled(promises)
+  const rejects = {}
+  for (const [[key, _], result] of zip(Object.entries(sources), results)) {
+    if (result.status === 'fulfilled') {
+      if (result.value !== null) current[key] = result.value
+    } else {
+      rejects[key] = result.reason.message
+    }
+  }
+  return rejects
+}
+const t = currentPulseTimestamp()
+console.log(await updateMissingInCurrent(t))
+console.log(await updateMissingInCurrent(t))
+console.log(current)
