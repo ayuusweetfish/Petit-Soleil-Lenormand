@@ -52,7 +52,9 @@ const fetchImage = async (url, modifiedAfter, modifiedBefore) => {
       `${modifiedAt ? modifiedAt.toISOString() : 'not given'}`)
     return arr
   } catch (e) {
-    throw new Error(`${e.message} (${url})`)
+    const tagged = new Error(`${e.message}`)
+    tagged._url = url
+    throw tagged
   }
 }
 
@@ -214,7 +216,7 @@ if (0) {
 const zip = (...as) => [...as[0]].map((_, i) => as.map((a) => a[i]))
 
 const beaconPulseTimestamp = (t) => {
-  const timestamp = (t || Date.now()) - 120 * 60000
+  const timestamp = (t || Date.now()) - 360 * 60000
   return timestamp - timestamp % (60 * 60000)
 }
 
@@ -229,12 +231,16 @@ const updateMissing = async (current, timestamp) => {
       current[key] = {
         digest: sha3_224(result.value).toHex(),
         length: result.value.length,
-        message: `${result.value._url} ${result.value._modifiedAt}`,
+        url: result.value._url,
+        message:
+          result.value._modifiedAt ?
+          result.value._modifiedAt.toISOString() : '-',
       }
     } else {
       current[key] = {
         digest: null,
         length: null,
+        url: result.reason._url || null,
         message: result.reason.message,
       }
     }
