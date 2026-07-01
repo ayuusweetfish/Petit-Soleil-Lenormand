@@ -1,5 +1,5 @@
 const createDb = async (path, token) => {
-  let run, txn
+  let run, rwtxn, rotxn
   if (path && path.startsWith('libsql:')) {
     const { createClient } = await import('npm:@libsql/client/web')
     const client = createClient({
@@ -10,8 +10,8 @@ const createDb = async (path, token) => {
     run = async (s, ...args) => {
       return (await client.execute({ sql: s, args: args })).rows
     }
-    txn = async (fn) => {
-      const txn = await client.transaction('write')
+    const txn = (type) => async (fn) => {
+      const txn = await client.transaction(type)
       try {
         await fn(async (s, ...args) => {
           return (await txn.execute({ sql: s, args: args })).rows
@@ -22,14 +22,16 @@ const createDb = async (path, token) => {
         throw e
       }
     }
+    rwtxn = txn('write')
+    rotxn = txn('read')
   } else {
     const { DatabaseSync } = await import('node:sqlite')
     const db = new DatabaseSync(path || ':memory:')
     const cachedStmts = {}
     const stmt = (s) => (cachedStmts[s] || (cachedStmts[s] = db.prepare(s)))
     run = async (s, ...args) => stmt(s).all(...args)
-    txn = async (fn) => {
-      db.exec('BEGIN TRANSACTION')
+    const txn = (type) => async (fn) => {
+      db.exec(type)
       try {
         await fn(run)
         db.exec('COMMIT')
@@ -38,8 +40,10 @@ const createDb = async (path, token) => {
         throw e
       }
     }
+    rwtxn = txn('BEGIN IMMEDIATE TRANSACTION')
+    rotxn = txn('BEGIN DEFERRED TRANSACTION')
   }
-  return { run, txn }
+  return { run, rwtxn, rotxn }
 }
 
 export default createDb
@@ -56,17 +60,20 @@ Deno.test('Database', async () => {
   await r(`UPDATE t1 SET s = 'www' WHERE rowid = 1`)
   await r(`SELECT CHANGES()`)
   await r(`SELECT 1 AS toString`)
-  await d.txn(async (run) => {
+  await d.rwtxn(async (run) => {
     const { rowid, s } = (await run(`SELECT rowid, s FROM t1 ORDER BY rowid DESC LIMIT 1`))[0]
     await run(`UPDATE t1 SET s = ? WHERE rowid = ?`, s + '!!', rowid)
     console.log(await run(`SELECT * FROM t1 WHERE s = ?`, s + '!!'))
   })
   try {
-    await d.txn(async (run) => {
+    await d.rwtxn(async (run) => {
       await run(`UPDATE t1 SET s = 'n'`)
       await run(`UPDATE t1 SET t = 'n'`)
     })
   } catch (e) {
   }
+  await d.rotxn(async (run) => {
+    console.log(await run(`SELECT COUNT(*) FROM t1 WHERE s = ?`, 'bbb'))
+  })
   await r(`SELECT * FROM t1 ORDER BY rowid DESC LIMIT 5`)
 })
