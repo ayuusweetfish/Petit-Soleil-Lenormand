@@ -46,9 +46,7 @@ const createDb = async (path, token) => {
   return { run, rwtxn, rotxn }
 }
 
-export default createDb
-
-Deno.test('Database', async () => {
+Deno.test('createDb', async () => {
   const d = await createDb()
   const r = async (s, ...a) => console.log(await d.run(s, ...a))
   await r(`SELECT 1 + ? AS three, DATETIME(?) AS now`, 2, 'now')
@@ -77,3 +75,43 @@ Deno.test('Database', async () => {
   })
   await r(`SELECT * FROM t1 ORDER BY rowid DESC LIMIT 5`)
 })
+
+
+const db = 1 ? await createDb('/tmp/abcde.sqlite') : await createDb('libsql://01KWDYF9W67SADNW25W8XRQ8HD-testdb1.lite.bunnydb.net/', await Deno.readTextFile('token.txt'))
+
+await db.run(`CREATE TABLE IF NOT EXISTS pulses (
+  pulse INTEGER NOT NULL PRIMARY KEY,
+  details TEXT,
+  output TEXT,
+  local_entropy TEXT
+)`)
+
+export const getPulse = async (pulse) => {
+  const result = await db.run(`SELECT * FROM pulses WHERE pulse = ?`, pulse)
+  return result.length > 0 ? {
+    details: JSON.parse(result[0].details),
+    output: new Uint8Array(result[0].output),
+    local_entropy: new Uint8Array(result[0].local_entropy),
+  } : null
+}
+export const setBeaconOutput = async (pulse, details, output) => {
+  await db.run(`
+    INSERT INTO pulses (pulse, details, output) VALUES (?, ?, ?)
+      ON CONFLICT (pulse) DO UPDATE
+      SET details = excluded.details, output = excluded.output
+  `, pulse, JSON.stringify(details), output)
+}
+export const setLocalEntropy = async (pulse, local_entropy) => {
+  await db.run(`
+    INSERT INTO pulses (pulse, local_entropy) VALUES (?, ?)
+      ON CONFLICT (pulse) DO UPDATE
+      SET local_entropy = excluded.local_entropy
+  `, pulse, local_entropy)
+}
+
+for (let i = 10000000; i <= 10036000; i += 3600) {
+  await setLocalEntropy(i, new Uint8Array([1, 2, 3, 4]))
+  await setBeaconOutput(i, { a: '1234' }, new Uint8Array([5, 6, 7, 8]))
+  console.log(await getPulse(i))
+  break
+}
