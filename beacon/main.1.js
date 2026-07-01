@@ -208,17 +208,12 @@ const sources = {
   'Arktika-M 2': src_arktika_m_2,
 }
 
-if (0) {
-  const t = +new Date('2026-06-28T06:00:00.000Z')
-  for (const [key, fn] of Object.entries(sources)) console.log(sha3_224(await fn(t)).toHex())
-}
-
-const zip = (...as) => [...as[0]].map((_, i) => as.map((a) => a[i]))
-
 const beaconPulseTimestamp = (t) => {
   const timestamp = (t || Date.now()) - 360 * 60000
   return timestamp - timestamp % (60 * 60000)
 }
+
+const zip = (...as) => [...as[0]].map((_, i) => as.map((a) => a[i]))
 
 const updateMissing = async (current, timestamp) => {
   const missingSources = Object.entries(sources)
@@ -248,10 +243,12 @@ const updateMissing = async (current, timestamp) => {
   return current
 }
 
-const t = beaconPulseTimestamp()
-console.log(t)
-const c = {}
-await updateMissing(c, t)
-console.log(c)
-await updateMissing(c, t)
-console.log(c)
+if (0) {
+  const t = beaconPulseTimestamp()
+  console.log(t)
+  const c = {}
+  await updateMissing(c, t)
+  console.log(c)
+  await updateMissing(c, t)
+  console.log(c)
+}

@@ -105,13 +105,19 @@ export const setLocalEntropy = async (pulse, local_entropy) => {
   await db.run(`
     INSERT INTO pulses (pulse, local_entropy) VALUES (?, ?)
       ON CONFLICT (pulse) DO UPDATE
-      SET local_entropy = excluded.local_entropy
+      SET local_entropy = COALESCE(local_entropy, excluded.local_entropy)
   `, pulse, local_entropy)
 }
 
-for (let i = 10000000; i <= 10036000; i += 3600) {
-  await setLocalEntropy(i, new Uint8Array([1, 2, 3, 4]))
-  await setBeaconOutput(i, { a: '1234' }, new Uint8Array([5, 6, 7, 8]))
-  console.log(await getPulse(i))
-  break
-}
+Deno.test('Application database operations', async () => {
+  for (let i = 10000000; i <= 10036000; i += 3600) {
+    if (i % 7200 === 0) await setLocalEntropy(i, new Uint8Array([1, 2, 3, 4, i % 256]))
+    await setBeaconOutput(i, { a: 'a' + i }, new Uint8Array([5, 6, 7, 8, i % 97]))
+    await setLocalEntropy(i, new Uint8Array([1, 2, 3, 4, i % 256 + 1]))
+      // Do nothing if already existing
+    const p = await getPulse(i)
+    if (p.details.a !== 'a' + i) throw new Error('-')
+    if (p.local_entropy[4] !== i % 256 + +!!(i % 7200)) throw new Error('-')
+    if (p.output[4] !== i % 97) throw new Error('-')
+  }
+})
