@@ -1,4 +1,4 @@
-// Sources
+// ============ Entropy sources ============ //
 
 import * as sources from './sources.js'
 
@@ -25,7 +25,7 @@ const keyedSources = {
   'Arktika-M 2': sources.arktika_m_2,
 }
 
-// Cryptographic primitives
+// ============ Cryptographic primitives ============ //
 
 import { createHash } from 'node:crypto'
 
@@ -52,10 +52,10 @@ Deno.test('parallelOracle', () => {
   if (output.toHex().substring(8192 - 8) !== '7057e87e') throw new Error('-')
 })
 
-// Application logic
+// ============ Application logic ============ //
 
-const beaconPulseTimestamp = (t) => {
-  const timestamp = (t || Date.now()) - 9 * 60 * 60000
+const beaconPulseTimestamp = (offsetHours, t0) => {
+  const timestamp = (t0 || Date.now()) + offsetHours * 60 * 60000
   return timestamp - timestamp % (60 * 60000)
 }
 
@@ -89,8 +89,10 @@ const fetchSources = async (records, timestamp) => {
   return records
 }
 
+const t0 = beaconPulseTimestamp(0)
+
 Deno.test('fetchSources', async () => {
-  const t = beaconPulseTimestamp()
+  const t = beaconPulseTimestamp(-9, t0)
   console.log(t)
   const c = {}
   await fetchSources(c, t)
@@ -98,3 +100,14 @@ Deno.test('fetchSources', async () => {
   await fetchSources(c, t)
   console.log(c)
 })
+
+import * as db from './db.js'
+
+for (let i = -10; i <= 0; i++) {
+  const t = t0 + i * 3600000
+  if ((await db.getPulse(t)).local_entropy === null) {
+    const a = new Uint8Array(64)
+    crypto.getRandomValues(a)
+    await db.setLocalEntropy(t, a)
+  }
+}

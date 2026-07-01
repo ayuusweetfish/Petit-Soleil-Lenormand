@@ -88,11 +88,16 @@ await db.run(`CREATE TABLE IF NOT EXISTS pulses (
 
 export const getPulse = async (pulse) => {
   const result = await db.run(`SELECT * FROM pulses WHERE pulse = ?`, pulse)
+  const toUint8 = (a) => a ? new Uint8Array(a) : null
   return result.length > 0 ? {
-    details: JSON.parse(result[0].details),
-    output: new Uint8Array(result[0].output),
-    local_entropy: new Uint8Array(result[0].local_entropy),
-  } : null
+    details: JSON.parse(result[0].details), // Handles null already
+    output: toUint8(result[0].output),
+    local_entropy: toUint8(result[0].local_entropy),
+  } : {
+    details: null,
+    output: null,
+    local_entropy: null,
+  }
 }
 export const setBeaconOutput = async (pulse, details, output) => {
   await db.run(`
