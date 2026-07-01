@@ -175,7 +175,7 @@ const src_ntsomz = (series, type) => async (timestamp) => {
     date.getUTCDate().toString().padStart(2, '0') + '-' +
     date.getUTCHours().toString().padStart(2, '0') +
     date.getUTCMinutes().toString().padStart(2, '0')
-  return await fetchImage(`https://electro.ntsomz.ru/i/${type}/${dateTimeStr}.jpg`)
+  return await fetchImage(`https://${series}.ntsomz.ru/i/${type}/${dateTimeStr}.jpg`)
 }
 const src_elektro_l_2 = src_ntsomz('electro', 'splash')
 const src_elektro_l_3 = src_ntsomz('electro', 'splash_l3')
@@ -213,30 +213,39 @@ if (0) {
 
 const zip = (...as) => [...as[0]].map((_, i) => as.map((a) => a[i]))
 
-const currentPulseTimestamp = () => {
-  const timestamp = Date.now() - 120 * 60000
+const beaconPulseTimestamp = (t) => {
+  const timestamp = (t || Date.now()) - 120 * 60000
   return timestamp - timestamp % (60 * 60000)
 }
-const latestPulseTimestamp = () => currentPulseTimestamp()
 
-const current = {}
-
-const updateMissingInCurrent = async (timestamp) => {
-  const promises = Object.entries(sources).map(
-    ([key, fn]) => current[key] === undefined ? fn(timestamp) : null
-  )
+const updateMissing = async (current, timestamp) => {
+  const missingSources = Object.entries(sources)
+    .filter(([key, fn]) => !current[key] || !current[key].digest)
+  const promises = missingSources.map(([_, fn]) => fn(timestamp))
   const results = await Promise.allSettled(promises)
-  const rejects = {}
-  for (const [[key, _], result] of zip(Object.entries(sources), results)) {
+  for (const [[key, _], result] of zip(missingSources, results)) {
     if (result.status === 'fulfilled') {
-      if (result.value !== null) current[key] = result.value
+      console.log(key, result.value, result)
+      current[key] = {
+        digest: sha3_224(result.value).toHex(),
+        length: result.value.length,
+        message: `${result.value._url} ${result.value._modifiedAt}`,
+      }
     } else {
-      rejects[key] = result.reason.message
+      current[key] = {
+        digest: null,
+        length: null,
+        message: result.reason.message,
+      }
     }
   }
-  return rejects
+  return current
 }
-const t = currentPulseTimestamp()
-console.log(await updateMissingInCurrent(t))
-console.log(await updateMissingInCurrent(t))
-console.log(current)
+
+const t = beaconPulseTimestamp()
+console.log(t)
+const c = {}
+await updateMissing(c, t)
+console.log(c)
+await updateMissing(c, t)
+console.log(c)
