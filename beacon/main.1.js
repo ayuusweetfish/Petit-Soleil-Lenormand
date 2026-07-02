@@ -59,7 +59,11 @@ const beaconPulseTimestamp = (offsetHours, t0) => {
   return timestamp - timestamp % (60 * 60000)
 }
 
-const fetchSources = async (records, timestamp) => {
+const digestedBlocks = {}
+
+const fetchSources = async (timestamp, records) => {
+  records = records || {}
+
   const zip = (...as) => [...as[0]].map((_, i) => as.map((a) => a[i]))
 
   const missingSources = Object.entries(keyedSources)
@@ -68,15 +72,16 @@ const fetchSources = async (records, timestamp) => {
   const results = await Promise.allSettled(promises)
   for (const [[key, _], result] of zip(missingSources, results)) {
     if (result.status === 'fulfilled') {
-      console.log(key, result.value, result)
+      const digest = sha3_224(result.value).toHex()
       records[key] = {
-        digest: sha3_224(result.value).toHex(),
+        digest: digest,
         length: result.value.length,
         url: result.value._url,
         message:
           result.value._modifiedAt ?
           result.value._modifiedAt.toISOString() : '-',
       }
+      digestedBlocks[digest] = result.value
     } else {
       records[key] = {
         digest: null,
@@ -94,10 +99,9 @@ const t0 = beaconPulseTimestamp(0)
 Deno.test('fetchSources', async () => {
   const t = beaconPulseTimestamp(-9, t0)
   console.log(t)
-  const c = {}
-  await fetchSources(c, t)
+  const c = await fetchSources(t)
   console.log(c)
-  await fetchSources(c, t)
+  await fetchSources(t, c)
   console.log(c)
 })
 
@@ -111,3 +115,36 @@ for (let i = -10; i <= 0; i++) {
     await db.setLocalEntropy(t, a)
   }
 }
+
+const createPulse = async (t) => {
+  const localEntropy = (await db.getPulse(t)).local_entropy
+  const sourceDetails = await fetchSources(t)
+  const sourceBlocks = Object.values(sourceDetails)
+    .filter((o) => o.digest !== null)
+    .map((o) => digestedBlocks[o.digest])
+  const output = parallelOracle(4096, localEntropy, sourceBlocks)
+  console.log(t)
+  console.log('curl --parallel \\\n' + Object.values(sourceDetails)
+    .filter((o) => o.digest !== null)
+    .map((o, i) => `'${o.url}' -o ${i.toString().padStart(2, '0')}.bin`)
+    .join(' \\\n')
+  )
+  console.log(`openssl dgst -sha3-224 *.bin`)
+  console.log(Object.values(sourceDetails)
+    .filter((o) => o.digest !== null)
+    .map((o, i) => `SHA3-224(${i.toString().padStart(2, '0')}.bin)= ${o.digest}`)
+    .join('\n')
+  )
+  const filesList = 
+    Object.values(sourceDetails)
+      .filter((o) => o.digest !== null)
+      .map((o, i) => `${i.toString().padStart(2, '0')}.bin`)
+      .join(' ')
+  console.log(`
+LOCAL=${localEntropy.toHex()}
+i=0; while [ $i -lt 64 ]; do echo $LOCAL | LC_ALL=C awk '{ for (i = 0; i < 256; i++) { hex[sprintf("%02x", i)] = i; } for (i = 1; i <= length($0); i += 2) { printf("%c", (hex[substr($0, i, 2)] + (i == 1 ? '"$i"' : 0)) % 256) } }' | cat - ${filesList} | openssl dgst -sha3-512 | awk '{ printf "%s", $2 }'; i=$((i + 1)); done
+  `.trim())
+  console.log(output.toHex())
+}
+
+await createPulse(beaconPulseTimestamp(-9, t0))
