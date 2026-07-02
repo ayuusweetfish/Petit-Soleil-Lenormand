@@ -1,7 +1,8 @@
 const createDb = async (path, token) => {
   let run, rwtxn, rotxn
   if (path && path.startsWith('libsql:')) {
-    const { createClient } = await import('npm:@libsql/client/web')
+    const module = 'npm:@libsql/client/web'
+    const { createClient } = await import(module)
     const client = createClient({
       url: path,
       authToken: token,
