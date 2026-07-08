@@ -116,35 +116,48 @@ for (let i = -10; i <= 0; i++) {
   }
 }
 
-const createPulse = async (t) => {
-  const localEntropy = (await db.getPulse(t)).local_entropy
-  const sourceDetails = await fetchSources(t)
-  const sourceBlocks = Object.values(sourceDetails)
-    .filter((o) => o.digest !== null)
-    .map((o) => digestedBlocks[o.digest])
-  const output = parallelOracle(4096, localEntropy, sourceBlocks)
-  console.log(t)
-  console.log('curl --parallel \\\n' + Object.values(sourceDetails)
+const findOrCreatePulse = async (t) => {
+  let pulseRecord = await db.getPulse(t)
+  if (pulseRecord.output === null) {
+    const localEntropy = pulseRecord.local_entropy  // Should be non-null
+    const sourceDetails = await fetchSources(t)
+    const sourceBlocks = Object.values(sourceDetails)
+      .filter((o) => o.digest !== null)
+      .map((o) => digestedBlocks[o.digest])
+    const output = parallelOracle(4096, localEntropy, sourceBlocks)
+    await db.setBeaconOutput(t, sourceDetails, output)
+    pulseRecord.details = sourceDetails
+    pulseRecord.output = output
+    // TODO: Record source blocks?
+  }
+  return pulseRecord
+}
+
+const printPulse = (pulseRecord) => {
+  const { pulse, local_entropy, details, output } = pulseRecord
+  console.log(pulse)
+  console.log('curl --parallel \\\n' + Object.values(details)
     .filter((o) => o.digest !== null)
     .map((o, i) => `'${o.url}' -o ${i.toString().padStart(2, '0')}.bin`)
     .join(' \\\n')
   )
   console.log(`openssl dgst -sha3-224 *.bin`)
-  console.log(Object.values(sourceDetails)
+  console.log(Object.values(details)
     .filter((o) => o.digest !== null)
     .map((o, i) => `SHA3-224(${i.toString().padStart(2, '0')}.bin)= ${o.digest}`)
     .join('\n')
   )
   const filesList = 
-    Object.values(sourceDetails)
+    Object.values(details)
       .filter((o) => o.digest !== null)
       .map((o, i) => `${i.toString().padStart(2, '0')}.bin`)
       .join(' ')
   console.log(`
-LOCAL=${localEntropy.toHex()}
+LOCAL=${local_entropy.toHex()}
 i=0; while [ $i -lt 64 ]; do echo $LOCAL | LC_ALL=C awk '{ for (i = 0; i < 256; i++) { hex[sprintf("%02x", i)] = i; } for (i = 1; i <= length($0); i += 2) { printf("%c", (hex[substr($0, i, 2)] + (i == 1 ? '"$i"' : 0)) % 256) } }' | cat - ${filesList} | openssl dgst -sha3-512 | awk '{ printf "%s", $2 }'; i=$((i + 1)); done
   `.trim())
   console.log(output.toHex())
 }
 
-await createPulse(beaconPulseTimestamp(-9, t0))
+const pulseRecord = await findOrCreatePulse(beaconPulseTimestamp(-9, t0))
+printPulse(pulseRecord)
