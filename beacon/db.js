@@ -83,8 +83,7 @@ const db = 1 ? await createDb('/tmp/abcde.sqlite') : await createDb('libsql://01
 await db.run(`CREATE TABLE IF NOT EXISTS pulses (
   pulse INTEGER NOT NULL PRIMARY KEY,
   details TEXT,
-  output TEXT,
-  local_entropy TEXT
+  output TEXT
 )`)
 
 export const getPulse = async (pulse) => {
@@ -93,11 +92,9 @@ export const getPulse = async (pulse) => {
   return result.length > 0 ? {
     details: JSON.parse(result[0].details), // Handles null already
     output: toUint8(result[0].output),
-    local_entropy: toUint8(result[0].local_entropy),
   } : {
     details: null,
     output: null,
-    local_entropy: null,
   }
 }
 export const setBeaconOutput = async (pulse, details, output) => {
@@ -107,23 +104,12 @@ export const setBeaconOutput = async (pulse, details, output) => {
       SET details = excluded.details, output = excluded.output
   `, pulse, JSON.stringify(details), output)
 }
-export const setLocalEntropy = async (pulse, local_entropy) => {
-  await db.run(`
-    INSERT INTO pulses (pulse, local_entropy) VALUES (?, ?)
-      ON CONFLICT (pulse) DO UPDATE
-      SET local_entropy = COALESCE(local_entropy, excluded.local_entropy)
-  `, pulse, local_entropy)
-}
 
 Deno.test('Application database operations', async () => {
   for (let i = 10000000; i <= 10036000; i += 3600) {
-    if (i % 7200 === 0) await setLocalEntropy(i, new Uint8Array([1, 2, 3, 4, i % 256]))
     await setBeaconOutput(i, { a: 'a' + i }, new Uint8Array([5, 6, 7, 8, i % 97]))
-    await setLocalEntropy(i, new Uint8Array([1, 2, 3, 4, i % 256 + 1]))
-      // Do nothing if already existing
     const p = await getPulse(i)
     if (p.details.a !== 'a' + i) throw new Error('-')
-    if (p.local_entropy[4] !== i % 256 + +!!(i % 7200)) throw new Error('-')
     if (p.output[4] !== i % 97) throw new Error('-')
   }
 })

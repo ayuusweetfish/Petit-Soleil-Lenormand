@@ -106,54 +106,61 @@ Deno.test('fetchSources', async () => {
 })
 
 import * as db from './db.js'
-
-for (let i = -10; i <= 0; i++) {
-  const t = t0 + i * 3600000
-  if ((await db.getPulse(t)).local_entropy === null) {
-    const a = new Uint8Array(64)
-    crypto.getRandomValues(a)
-    await db.setLocalEntropy(t, a)
-  }
-}
+import * as ecvrf from './ecvrf.js'
 
 const findOrCreatePulse = async (t) => {
   let pulseRecord = await db.getPulse(t)
   if (pulseRecord.output === null) {
-    const localEntropy = pulseRecord.local_entropy  // Should be non-null
+    // Local VRF
+    const vrfSecretKey = Buffer.fromHex('4ccd089b28ff96da9db6c346ec114e0f5b8a319f35aba624da8cf6ed4fb8a6fb')
+    const vrfPublicKey = ecvrf.get_public_key(vrfSecretKey)
+    const [, vrfProof] = ecvrf.ecvrf_prove(
+      vrfSecretKey, new TextEncoder().encode(t.toString()))
+    const [, vrfOutput] = ecvrf.ecvrf_proof_to_hash(vrfProof)
+
+    // External sources
     const sourceDetails = await fetchSources(t)
     const sourceBlocks = Object.values(sourceDetails)
       .filter((o) => o.digest !== null)
       .map((o) => digestedBlocks[o.digest])
-    const output = parallelOracle(4096, localEntropy, sourceBlocks)
-    await db.setBeaconOutput(t, sourceDetails, output)
-    pulseRecord.details = sourceDetails
+    const output = parallelOracle(4096, vrfOutput, sourceBlocks)
+
+    const pulseDetails = {
+      sources: sourceDetails,
+      vrf_pk: vrfPublicKey.toHex(),
+      vrf_proof: vrfProof.toHex(),
+      vrf_output: vrfOutput.toHex(),
+    }
+    await db.setBeaconOutput(t, pulseDetails, output)
+    pulseRecord.details = pulseDetails
     pulseRecord.output = output
     // TODO: Record source blocks?
   }
+  pulseRecord.pulse = t
   return pulseRecord
 }
 
 const printPulse = (pulseRecord) => {
-  const { pulse, local_entropy, details, output } = pulseRecord
+  const { pulse, details, output } = pulseRecord
   console.log(pulse)
-  console.log('curl --parallel \\\n' + Object.values(details)
+  console.log('curl --parallel \\\n' + Object.values(details.sources)
     .filter((o) => o.digest !== null)
     .map((o, i) => `'${o.url}' -o ${i.toString().padStart(2, '0')}.bin`)
     .join(' \\\n')
   )
   console.log(`openssl dgst -sha3-224 *.bin`)
-  console.log(Object.values(details)
+  console.log(Object.values(details.sources)
     .filter((o) => o.digest !== null)
     .map((o, i) => `SHA3-224(${i.toString().padStart(2, '0')}.bin)= ${o.digest}`)
     .join('\n')
   )
   const filesList = 
-    Object.values(details)
+    Object.values(details.sources)
       .filter((o) => o.digest !== null)
       .map((o, i) => `${i.toString().padStart(2, '0')}.bin`)
       .join(' ')
   console.log(`
-LOCAL=${local_entropy.toHex()}
+LOCAL=$(./vrf-verify ${details.vrf_pk} ${pulse} ${details.vrf_proof})
 i=0; while [ $i -lt 64 ]; do echo $LOCAL | LC_ALL=C awk '{ for (i = 0; i < 256; i++) { hex[sprintf("%02x", i)] = i; } for (i = 1; i <= length($0); i += 2) { printf("%c", (hex[substr($0, i, 2)] + (i == 1 ? '"$i"' : 0)) % 256) } }' | cat - ${filesList} | openssl dgst -sha3-512 | awk '{ printf "%s", $2 }'; i=$((i + 1)); done
   `.trim())
   console.log(output.toHex())
