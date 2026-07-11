@@ -129,7 +129,6 @@ const findOrCreatePulse = async (t) => {
       sources: sourceDetails,
       vrf_pk: vrfPublicKey.toHex(),
       vrf_proof: vrfProof.toHex(),
-      vrf_output: vrfOutput.toHex(),
     }
     await db.setBeaconOutput(t, pulseDetails, output)
     pulseRecord.details = pulseDetails
