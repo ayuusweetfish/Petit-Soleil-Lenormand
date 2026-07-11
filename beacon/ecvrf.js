@@ -1,5 +1,5 @@
 // ECVRF-EDWARDS25519-SHA512-TAI
-// https://datatracker.ietf.org/doc/html/rfc9381
+// https://www.ietf.org/rfc/rfc9381.html
 // 5.5. ECVRF Ciphersuites, #section-5.5-5
 
 // Ported & edited from draft Python implementation at
