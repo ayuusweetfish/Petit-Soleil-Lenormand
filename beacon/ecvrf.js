@@ -168,6 +168,52 @@ export const ecvrf_proof_to_hash = (pi_string) => {
   return ['VALID', beta_string]
 }
 
+// Section 5.3. ECVRF Verifying
+export const ecvrf_verify = (y, alpha_string, pi_string) => {
+  if (pi_string.length !== 80) return ['INVALID', Buffer.alloc(0)]
+
+  let y_point
+  try {
+    y_point = Point.fromBytes(y)
+  } catch (e) {
+    return ['INVALID', Buffer.alloc(0)]
+  }
+
+  const gamma_string = pi_string.subarray(0, 32)
+  const c_string = pi_string.subarray(32, 48)
+  const s_string = pi_string.subarray(48, 80)
+
+  const c = bytesToBigIntLE(c_string)
+  const s = bytesToBigIntLE(s_string)
+
+  let gamma
+  try {
+    gamma = Point.fromBytes(gamma_string)
+  } catch (e) {
+    return ['INVALID', Buffer.alloc(0)]
+  }
+
+  const h_string = _ecvrf_hash_to_curve_tai(SUITE_STRING, y, alpha_string)
+  if (h_string === 'INVALID') return ['INVALID', Buffer.alloc(0)]
+
+  let h_point
+  try {
+    h_point = Point.fromBytes(h_string)
+  } catch (e) {
+    return ['INVALID', Buffer.alloc(0)]
+  }
+
+  // U = s*B - c*Y
+  const U = Point.BASE.multiply(s).subtract((y_point.multiply(c)))
+  // V = s*H - c*Gamma
+  const V = h_point.multiply(s).subtract(gamma.multiply(c))
+
+  const derived_c = _ecvrf_hash_points(y, h_point, gamma, U, V)
+  if (c !== derived_c) return ['INVALID', Buffer.alloc(0)]
+
+  return ecvrf_proof_to_hash(pi_string)
+}
+
 export const get_public_key = (sk) => {
   const secret_int = _get_secret_scalar(sk)
   const public_point = Point.BASE.multiply(mod(secret_int, ORDER))
@@ -189,6 +235,14 @@ Deno.test('ECVRF-EDWARDS25519-SHA512-TAI', () => {
     const output_str = ecvrf_proof_to_hash(Buffer.fromHex(proof_str))[1].toHex()
     console.log('Output', output_str)
     if (output_str !== output_str_expected) throw new Error('output')
+
+    const verify_result = ecvrf_verify(
+      Buffer.fromHex(public_key),
+      Buffer.fromHex(input),
+      Buffer.fromHex(proof_str)
+    )
+    if (verify_result[0] !== 'VALID') throw new Error('verify')
+    if (verify_result[1].toHex() !== output_str) throw new Error('verify')
   }
 
   // Test vectors from B.3. ECVRF-EDWARDS25519-SHA512-TAI
