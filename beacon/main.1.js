@@ -3,6 +3,7 @@
 import * as sources from './sources.js'
 
 const keyedSources = {
+/*
   'FY Geostationary IR 10.8u': sources.fy_geos_ir,
   'FY Geostationary WV 7u': sources.fy_geos_wv,
   'FY-4B Geo Color': sources.fy4b_color,
@@ -12,8 +13,10 @@ const keyedSources = {
   'Himawari IR B13': sources.himawari_b13,
   'Himawari WV B08': sources.himawari_b08,
   'Himawari TCR': sources.himawari_tcr,
+*/
   'Meteosat IR 10.5u': sources.meteosat_ir105,
   'Meteosat IR 0.39u': sources.meteosat_ir039,
+/*
   'INSAT-3DS IR1 10.8u': sources.insat_ir1,
   'INSAT-3DS MIR 3.9u': sources.insat_mir,
   'GK2A RGB DAYNIGHT': sources.gk2a_rgb_daynight,
@@ -23,6 +26,7 @@ const keyedSources = {
   'Elektro-L 4': sources.elektro_l_4,
   'Arktika-M 1': sources.arktika_m_1,
   'Arktika-M 2': sources.arktika_m_2,
+*/
 }
 
 // ============ Cryptographic primitives ============ //
@@ -96,7 +100,7 @@ const fetchSources = async (timestamp, records) => {
 
 const t0 = beaconPulseTimestamp(0)
 
-Deno.test('fetchSources', async () => {
+if (0) Deno.test('fetchSources', async () => {
   const t = beaconPulseTimestamp(-9, t0)
   console.log(t)
   const c = await fetchSources(t)
@@ -165,5 +169,150 @@ i=0; while [ $i -lt 64 ]; do echo $LOCAL | LC_ALL=C awk '{ for (i = 0; i < 256; 
   console.log(output.toHex())
 }
 
-const pulseRecord = await findOrCreatePulse(beaconPulseTimestamp(-9, t0))
-printPulse(pulseRecord)
+Deno.test('findOrCreatePulse', async () => {
+  const pulseRecord = await findOrCreatePulse(beaconPulseTimestamp(-9, t0))
+  printPulse(pulseRecord)
+})
+
+// ============ Web server ============ //
+
+const log = (msg) => console.log(`${(new Date()).toISOString()} ${msg}`)
+
+const renderTemplate = (s, lookup, lang, extra) => {
+  extra = extra || {}
+  extra.lang = (lang === 'zh' ? 'zh-Hans' : lang)
+  return s.replaceAll(/^{{\s*@([a-zA-Z-]+)\s*}}(.+\n)/gm, (_, capturedLang, content) => {
+    return (capturedLang === lang ? content : '')
+  }).replaceAll(/{{~(.*)\s*([0-9A-Za-z_]+)\s*([^]*\S)\s*\1~(?:}}|-}}\s*)/gm, (_, _delim, key, w) => {
+    const list = lookup[key] || []
+    return list.map((entry, index) =>
+      renderTemplate(w, entry, lang, { index: (index + 1).toString().padStart(2, '0') })
+    ).join('')
+  }).replaceAll(/{{\s*([0-9A-Za-z_]+)\s*}}/g, (_, w) => {
+    return lookup[w] !== undefined ? lookup[w].toString() :
+           extra[w] !== undefined ? extra[w].toString() : ''
+  })
+}
+
+const parseCookies = (cookiesStr) => {
+  const cookies = {}
+  const regexp = /([A-Za-z0-9-_]+)=(.*?)(?:(?=;)|$)/g
+  let result
+  while ((result = regexp.exec(cookiesStr)) !== null) {
+    const [_, key, value] = result
+    cookies[decodeURIComponent(key)] = decodeURIComponent(value)
+  }
+  return cookies
+}
+
+const negotiateLang = (accept, supported) => {
+  const list = accept.split(',').map((s) => {
+    s = s.trim()
+    let q = 1
+    const pos = s.indexOf(';q=')
+    if (pos !== -1) {
+      const parsed = parseFloat(s.substring(pos + 3))
+      if (isFinite(parsed)) q = parsed
+      s = s.substring(0, pos).trim()
+    }
+    return { lang: s, q }
+  })
+
+  let bestScore = 0
+  let bestLang = supported[0]
+  for (const l of supported) {
+    for (const { lang, q } of list) {
+      if (lang.substring(0, 2) === l.substring(0, 2)) {
+        const score = q + (lang === l ? 0.2 : 0)
+        if (score > bestScore)
+          [bestScore, bestLang] = [score, l]
+      }
+    }
+  }
+  return bestLang
+}
+
+import { serveFile } from 'jsr:@std/http@1.1.2/file-server'
+
+const serveReq = async (req, info) => {
+  const url = new URL(req.url)
+
+  if (req.method === 'GET' &&
+    (url.pathname === '/' || url.pathname === '/verify' || url.pathname === '/gallery')
+  ) {
+    const pageName = url.pathname.substring(1) || 'index'
+    let selLang = url.search.substring(1)
+    if (selLang) {
+      const lang = negotiateLang(selLang, ['en', 'zh'])
+      const redirectUrl = url.origin + url.pathname
+      return new Response(
+        `<html><body>Redirecting to <a href='${redirectUrl}'>${redirectUrl}</a></body></html>`,
+        {
+          status: 303,
+          headers: {
+            'Location': redirectUrl,
+            'Set-Cookie': `lang=${lang}; SameSite=Strict; Path=/; Secure; Max-Age=86400`,
+          },
+        }
+      )
+    }
+    let cookieLang
+    if (!selLang) selLang = cookieLang = parseCookies(req.headers.get('Cookie') || '')['lang']
+    if (!selLang) selLang = req.headers.get('Accept-Language')
+    const lang = negotiateLang(selLang || '', ['en', 'zh'])
+
+    const lookup = {}
+
+    const templateFrame = await Deno.readTextFile('page/frame.html')
+    const templateContent = await Deno.readTextFile(`page/${pageName}.html`)
+    let content = renderTemplate(templateContent, lookup, lang)
+    let title
+    content = content.replace(/^<title>(.+)<\/title>\n/, (_, matchedTitle) => {
+      title = matchedTitle
+      return ''
+    })
+    title = (title ? (title + ' — ') : '')
+    Object.assign(lookup, { title, content })
+    const page = renderTemplate(templateFrame, lookup, lang)
+    const headers = {
+      'Content-Type': 'text/html; encoding=utf-8',
+    }
+    if (cookieLang !== lang) {
+      headers['Set-Cookie'] =
+        `lang=${lang}; SameSite=Strict; Path=/; Secure; Max-Age=86400`
+    }
+    return new Response(page, { headers })
+  }
+
+  if (req.method === 'GET') {
+    const tryStat = async (path) => {
+      try {
+        return (await Deno.stat(path)).isFile
+      } catch (e) {
+        if (e instanceof Deno.errors.NotFound) return false
+        throw e
+      }
+    }
+    if (await tryStat('page/' + url.pathname.substring(1))) {
+      const path = url.pathname.substring(1)
+      return await serveFile(req, 'page/' + path)
+    }
+  }
+
+  throw new Error(`[404] Void space, please return`)
+}
+
+const port = 3321
+const server = Deno.serve({
+  port,
+  onListen: () => log(`Running at http://localhost:${port}/`),
+}, async (req, info) => {
+  try {
+    return await serveReq(req, info)
+  } catch (e) {
+    let status = 500
+    const message = e.message.replace(/^\[([0-9]{3})\] /, (_, n) => ((status = +n), ''))
+    if (status === 500) log(e), console.log(e)
+    return new Response(message, { status })
+  }
+})
