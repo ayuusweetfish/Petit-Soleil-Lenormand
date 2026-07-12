@@ -106,6 +106,29 @@ const _ecvrf_hash_points = (y, p1, p2, p3, p4) => {
   return bytesToBigIntLE(c_string.subarray(0, 16))
 }
 
+const _ecvrf_decode_proof = (pi_string) => {
+  if (pi_string.length !== 80) return ['INVALID']
+
+  const gamma_string = pi_string.subarray(0, 32)
+  const c_string = pi_string.subarray(32, 48)
+  const s_string = pi_string.subarray(48, 80)
+
+  const c = bytesToBigIntLE(c_string)
+  const s = bytesToBigIntLE(s_string)
+
+  let gamma
+  try {
+    gamma = Point.fromBytes(gamma_string)
+  } catch (e) {
+    return ['INVALID']
+  }
+
+  if (s >= ORDER)
+    return ['INVALID']
+
+  return ['VALID', gamma, c, s]
+}
+
 // Public API
 
 // Section 5.1. ECVRF Proving
@@ -143,18 +166,8 @@ export const ecvrf_prove = (sk, alpha_string) => {
 
 // Section 5.2. ECVRF Proof To Hash
 export const ecvrf_proof_to_hash = (pi_string) => {
-  if (pi_string.length !== 80) return ['INVALID', Buffer.alloc(0)]
-
-  const gamma_string = pi_string.subarray(0, 32)
-  const c_string = pi_string.subarray(32, 48) // Unused
-  const s_string = pi_string.subarray(48)     // Unused
-
-  let gamma
-  try {
-    gamma = Point.fromBytes(gamma_string)
-  } catch (e) {
-    return ['INVALID', Buffer.alloc(0)]
-  }
+  const [pi_valid, gamma, c, s] = _ecvrf_decode_proof(pi_string)
+  if (pi_valid === 'INVALID') return ['INVALID', Buffer.alloc(0)]
 
   const cofactor_gamma = gamma.multiply(COFACTOR)
 
@@ -170,8 +183,6 @@ export const ecvrf_proof_to_hash = (pi_string) => {
 
 // Section 5.3. ECVRF Verifying
 export const ecvrf_verify = (y, alpha_string, pi_string) => {
-  if (pi_string.length !== 80) return ['INVALID', Buffer.alloc(0)]
-
   let y_point
   try {
     y_point = Point.fromBytes(y)
@@ -179,19 +190,8 @@ export const ecvrf_verify = (y, alpha_string, pi_string) => {
     return ['INVALID', Buffer.alloc(0)]
   }
 
-  const gamma_string = pi_string.subarray(0, 32)
-  const c_string = pi_string.subarray(32, 48)
-  const s_string = pi_string.subarray(48, 80)
-
-  const c = bytesToBigIntLE(c_string)
-  const s = bytesToBigIntLE(s_string)
-
-  let gamma
-  try {
-    gamma = Point.fromBytes(gamma_string)
-  } catch (e) {
-    return ['INVALID', Buffer.alloc(0)]
-  }
+  const [pi_valid, gamma, c, s] = _ecvrf_decode_proof(pi_string)
+  if (pi_valid === 'INVALID') return ['INVALID', Buffer.alloc(0)]
 
   const h_string = _ecvrf_hash_to_curve_tai(SUITE_STRING, y, alpha_string)
   if (h_string === 'INVALID') return ['INVALID', Buffer.alloc(0)]
@@ -220,7 +220,7 @@ export const get_public_key = (sk) => {
   return public_point.toBytes()
 }
 
-Deno.test('ECVRF-EDWARDS25519-SHA512-TAI', () => {
+if (typeof Deno === 'object') Deno.test('ECVRF-EDWARDS25519-SHA512-TAI', () => {
   const test = (secret_key, public_key_expected, input, proof_str_expected, output_str_expected) => {
     console.log('Secret key', secret_key, 'Input', input)
 
