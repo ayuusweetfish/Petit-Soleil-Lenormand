@@ -6,7 +6,7 @@
 // https://github.com/nccgroup/draft-irtf-cfrg-vrf-06.git
 
 import crypto from 'node:crypto'
-import { Point } from 'npm:@noble/ed25519'
+import { Point } from './ext/noble-ed25519-3.1.0.js'
 
 // Constants
 const ORDER = 2n ** 252n + 27742317777372353535851937790883648493n
