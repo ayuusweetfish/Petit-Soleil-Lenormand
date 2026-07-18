@@ -252,7 +252,7 @@ const openFile = async (path, byteStart, byteEnd) => {
       x = Math.imul(((x << 5) | (x >>> 27)) ^ s.charCodeAt(i), 0x9e3779b9)
     return (x >>> 0).toString(36).padStart(7, '0')
   }
-  const etag = `W/"${hash(+fileInfo.mtime, fileInfo.size, path)}"`
+  const etag = `"${hash(+fileInfo.mtime, fileInfo.size, path)}"`
 
   // Ranges
   const fileSize = fileInfo.size
@@ -305,18 +305,17 @@ const serveFile = async (req, path) => {
   const headers = new Headers()
   headers.set('Content-Type', mime(realPath))
   headers.set('ETag', etag)
-  headers.set('Content-Length', (byteEnd - byteStart + 1).toString())
-  headers.set('Cache-Control', 'public, max-age=600')
   headers.set('Accept-Ranges', 'bytes')
   if (!rangeValid) {
     headers.set('Content-Range', `bytes */${fileSize}`)
     return new Response(null, { status: 416, headers })
   }
+  headers.set('Cache-Control', 'public, max-age=600')
   if (req.headers.get('If-None-Match') === etag) {
     headers.delete('Content-Type')
-    headers.delete('Content-Length')
     return new Response(null, { status: 304, headers })
   }
+  headers.set('Content-Length', (byteEnd - byteStart + 1).toString())
   if (reqByteStart !== undefined) {
     headers.set('Content-Range', `bytes ${byteStart}-${byteEnd}/${fileSize}`)
     return new Response(stream.pipeThrough(new Truncate(byteEnd - byteStart + 1)),
