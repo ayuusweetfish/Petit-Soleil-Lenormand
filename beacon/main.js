@@ -250,7 +250,7 @@ const openFile = async (path, byteStart, byteEnd) => {
     x = Math.imul(((x << 5) | (x >>> 27)) ^ y, 0x9e3779b9)
     for (let i = 0; i < s.length; i++)
       x = Math.imul(((x << 5) | (x >>> 27)) ^ s.charCodeAt(i), 0x9e3779b9)
-    return (x >>> 0).toString(36).padStart(7, '0')
+    return (x >>> 1).toString(36).padStart(6, '0')
   }
   const etag = `"${hash(+fileInfo.mtime, fileInfo.size, path)}"`
 
