@@ -232,7 +232,119 @@ const negotiateLang = (accept, supported) => {
   return bestLang
 }
 
-import { serveFile } from 'jsr:@std/http@1.1.2/file-server'
+const openFile = async (path, byteStart, byteEnd) => {
+  let file
+
+  try {
+    file = await Deno.open(path)
+  } catch (e) {
+    if (e instanceof Deno.errors.NotFound) return null
+    if (e.code === 'EISDIR') return null
+    throw e
+  }
+
+  const fileInfo = await file.stat()
+  if (fileInfo.isDirectory) return null
+
+  const etag = (+fileInfo.mtime).toString() // TODO
+
+  // Ranges
+  const fileSize = fileInfo.size
+  if (byteStart === undefined) byteStart = 0
+  if (byteEnd === undefined) byteEnd = fileSize - 1
+  const rangeValid = (byteStart >= 0 && byteEnd < fileSize && byteStart <= byteEnd)
+  if (!rangeValid) return { path, etag, fileSize, rangeValid }
+
+  file.seek(byteStart, Deno.SeekMode.Start)
+
+  return {
+    path, stream: file.readable, etag,
+    byteStart, byteEnd, fileSize, rangeValid: true,
+  }
+}
+const mime = (s) => {
+  const ext = s.substring(s.lastIndexOf('.') + 1).toLowerCase()
+  switch (ext) {
+    case 'html': return 'text/html; charset=UTF-8'
+    case 'css': return 'text/css; charset=UTF-8'
+    case 'js': return 'application/javascript; charset=UTF-8'
+    case 'woff2': return 'font/woff2'
+    case 'woff': return 'font/woff'
+    case 'svg': return 'image/svg+xml'
+    case 'png': return 'image/png'
+    case 'jpeg': case 'jpg': return 'image/jpeg'
+  }
+  return 'application/octet-stream'
+}
+// <Uint8Array, Uint8Array>
+class Truncate extends TransformStream {
+  constructor(limit) {
+    super({
+      transform(chunk, controller) {
+        if (chunk.length >= limit) {
+          chunk = chunk.slice(0, limit)
+          limit = 0
+        } else {
+          limit -= chunk.length
+        }
+        controller.enqueue(chunk)
+      },
+    })
+  }
+}
+const serveFile = async (req, path) => {
+  const headers = new Headers()
+  headers.set('Accept-Ranges', 'bytes')
+  headers.set('Date', new Date().toUTCString())
+
+  let status = 200
+
+  const rangeHeader = req.headers.get('Range')
+  const result = /bytes=(\d+)-(\d+)?/g.exec(rangeHeader)
+  const reqByteStart = (result && result[1]) ? +result[1] : undefined
+  const reqByteEnd = (result && result[2]) ? +result[2] : undefined
+
+  const { path: realPath, stream, etag, byteStart, byteEnd, fileSize, rangeValid } =
+    await openFile(path, reqByteStart, reqByteEnd)
+
+  headers.set('Content-Type', mime(realPath))
+
+  if (!rangeValid) {
+    status = 416
+    headers.set('Content-Range', `bytes */${fileSize}`)
+    return new Response(null, { status, headers })
+  } else if (reqByteStart !== undefined) {
+    status = 206
+    headers.set('Content-Range', `bytes ${byteStart}-${byteEnd}/${fileSize}`)
+  }
+  headers.set('ETag', etag)
+  headers.set('Content-Length', (byteEnd - byteStart + 1).toString())
+  if (realPath.match(/\.[0-9a-f]{8}\.[a-zA-Z0-9-_]+$/)  // Versioned
+    || realPath.match(/^\/bin\/vendor\//)   // Vendored
+  ) {
+    headers.set('Cache-Control', 'public, max-age=31536000')
+  } else {
+    headers.set('Cache-Control', 'public, max-age=600')
+  }
+  // Match cached ETag
+  const etagMatch = (a, b) => {
+    if (!a || !b) return false
+    if (a.startsWith('W/')) a = a.substring(2)
+    if (b.startsWith('W/')) b = b.substring(2)
+    return a === b
+  }
+  if (etagMatch(etag, req.headers.get('If-None-Match'))) {
+    status = 304
+    headers.delete('Content-Type')
+    headers.delete('Content-Length')
+    headers.delete('Accept-Ranges')
+    return new Response(null, { status, headers })
+  }
+  return new Response(
+    stream.pipeThrough(new Truncate(byteEnd - byteStart + 1)),
+    { status, headers }
+  )
+}
 
 const serveReq = async (req, info) => {
   const url = new URL(req.url)
