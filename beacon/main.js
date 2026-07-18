@@ -258,14 +258,14 @@ const openFile = async (path, byteStart, byteEnd) => {
   const fileSize = fileInfo.size
   if (byteStart === undefined) byteStart = 0
   if (byteEnd === undefined) byteEnd = fileSize - 1
-  const rangeValid = (byteStart >= 0 && byteEnd < fileSize && byteStart <= byteEnd)
-  if (!rangeValid) return { path, etag, fileSize, rangeValid }
+  if (!(byteStart >= 0 && byteEnd < fileSize && byteStart <= byteEnd))
+    return { path, fileSize, etag, rangeValid: false }
 
   file.seek(byteStart, Deno.SeekMode.Start)
 
   return {
-    path, stream: file.readable, etag,
-    byteStart, byteEnd, fileSize, rangeValid: true,
+    path, stream: file.readable, fileSize, etag,
+    byteStart, byteEnd, rangeValid: true,
   }
 }
 const mime = (s) => {
@@ -279,71 +279,50 @@ const mime = (s) => {
     case 'svg': return 'image/svg+xml'
     case 'png': return 'image/png'
     case 'jpeg': case 'jpg': return 'image/jpeg'
+    case 'mp4': return 'video/mp4'
   }
   return 'application/octet-stream'
 }
-// <Uint8Array, Uint8Array>
 class Truncate extends TransformStream {
   constructor(limit) {
     super({
       transform(chunk, controller) {
-        if (chunk.length >= limit) {
-          chunk = chunk.slice(0, limit)
-          limit = 0
-        } else {
-          limit -= chunk.length
-        }
-        controller.enqueue(chunk)
+        controller.enqueue(chunk.slice(0, limit))
+        if ((limit -= chunk.length) <= 0) controller.terminate()
       },
     })
   }
 }
 const serveFile = async (req, path) => {
-  const headers = new Headers()
-  headers.set('Accept-Ranges', 'bytes')
-  headers.set('Date', new Date().toUTCString())
-
-  let status = 200
-
   const rangeHeader = req.headers.get('Range')
   const result = /bytes=(\d+)-(\d+)?/g.exec(rangeHeader)
   const reqByteStart = (result && result[1]) ? +result[1] : undefined
   const reqByteEnd = (result && result[2]) ? +result[2] : undefined
 
-  const { path: realPath, stream, etag, byteStart, byteEnd, fileSize, rangeValid } =
+  const { path: realPath, stream, fileSize, etag, byteStart, byteEnd, rangeValid } =
     await openFile(path, reqByteStart, reqByteEnd)
 
+  const headers = new Headers()
   headers.set('Content-Type', mime(realPath))
-
-  if (!rangeValid) {
-    status = 416
-    headers.set('Content-Range', `bytes */${fileSize}`)
-    return new Response(null, { status, headers })
-  } else if (reqByteStart !== undefined) {
-    status = 206
-    headers.set('Content-Range', `bytes ${byteStart}-${byteEnd}/${fileSize}`)
-  }
   headers.set('ETag', etag)
   headers.set('Content-Length', (byteEnd - byteStart + 1).toString())
   headers.set('Cache-Control', 'public, max-age=600')
-  // Match cached ETag
-  const etagMatch = (a, b) => {
-    if (!a || !b) return false
-    if (a.startsWith('W/')) a = a.substring(2)
-    if (b.startsWith('W/')) b = b.substring(2)
-    return a === b
+  headers.set('Accept-Ranges', 'bytes')
+  if (!rangeValid) {
+    headers.set('Content-Range', `bytes */${fileSize}`)
+    return new Response(null, { status: 416, headers })
   }
-  if (etagMatch(etag, req.headers.get('If-None-Match'))) {
-    status = 304
+  if (req.headers.get('If-None-Match') === etag) {
     headers.delete('Content-Type')
     headers.delete('Content-Length')
-    headers.delete('Accept-Ranges')
-    return new Response(null, { status, headers })
+    return new Response(null, { status: 304, headers })
   }
-  return new Response(
-    stream.pipeThrough(new Truncate(byteEnd - byteStart + 1)),
-    { status, headers }
-  )
+  if (reqByteStart !== undefined) {
+    headers.set('Content-Range', `bytes ${byteStart}-${byteEnd}/${fileSize}`)
+    return new Response(stream.pipeThrough(new Truncate(byteEnd - byteStart + 1)),
+      { status: 206, headers })
+  }
+  return new Response(stream, { status: 200, headers })
 }
 
 const serveReq = async (req, info) => {
