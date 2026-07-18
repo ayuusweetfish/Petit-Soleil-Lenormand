@@ -246,7 +246,13 @@ const openFile = async (path, byteStart, byteEnd) => {
   const fileInfo = await file.stat()
   if (fileInfo.isDirectory) return null
 
-  const etag = (+fileInfo.mtime).toString() // TODO
+  const hash = (x, y, s) => {
+    x = Math.imul(((x << 5) | (x >>> 27)) ^ y, 0x9e3779b9)
+    for (let i = 0; i < s.length; i++)
+      x = Math.imul(((x << 5) | (x >>> 27)) ^ s.charCodeAt(i), 0x9e3779b9)
+    return (x >>> 0).toString(36).padStart(7, '0')
+  }
+  const etag = `W/"${hash(+fileInfo.mtime, fileInfo.size, path)}"`
 
   // Ranges
   const fileSize = fileInfo.size
@@ -319,13 +325,7 @@ const serveFile = async (req, path) => {
   }
   headers.set('ETag', etag)
   headers.set('Content-Length', (byteEnd - byteStart + 1).toString())
-  if (realPath.match(/\.[0-9a-f]{8}\.[a-zA-Z0-9-_]+$/)  // Versioned
-    || realPath.match(/^\/bin\/vendor\//)   // Vendored
-  ) {
-    headers.set('Cache-Control', 'public, max-age=31536000')
-  } else {
-    headers.set('Cache-Control', 'public, max-age=600')
-  }
+  headers.set('Cache-Control', 'public, max-age=600')
   // Match cached ETag
   const etagMatch = (a, b) => {
     if (!a || !b) return false
