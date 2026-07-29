@@ -48,10 +48,10 @@
 
 <p><strong>6.</strong> Finally, calculate the bitwise exclusive-or of the hash of files (step <strong>3</strong>), the local randomness (step <strong>4</strong>), and previous output (step <strong>5</strong>).</p>
 <p><tt class='code'>
-  <span class='command'>python3 -c "print('%08192x' % (0x$HASH ^ 0x$LOCAL ^ 0x$PREV))"</span><br>
+  <span class='command'>python3 -c "print('%08192x' % (0x$HASH ^ 0x$PREV))"</span><br>
   <span class='command-output'>{{ latestOutputPrefixSuffix }}</span><br>
   <span class='command'># Or alternatively:</span><br>
-  <span class='command'>perl -Mbigint -le "printf \"%08192s\n\", (0x$HASH ^ 0x$LOCAL ^ 0x$PREV)-&gt;copy()-&gt;to_hex()"</span><br>
+  <span class='command'>perl -Mbigint -le "printf \"%08192s\n\", (0x$HASH ^ 0x$PREV)-&gt;copy()-&gt;to_hex()"</span><br>
   <span class='command-output'>{{ latestOutputPrefixSuffix }}</span><br>
 </tt></p>
 

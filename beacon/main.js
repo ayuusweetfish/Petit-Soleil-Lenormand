@@ -111,6 +111,20 @@ if (0) Deno.test('fetchSources', async () => {
 import * as db from './db.js'
 import * as ecvrf from './ecvrf.js'
 
+const findPulse = async (t) => {
+  let pulseRecord = await db.getPulse(t)
+  if (pulseRecord.output === null) return null
+  pulseRecord.pulse = t
+  return pulseRecord
+}
+
+const getPreviousPulse = async (t) => {
+  const pulse = await db.getPreviousPulseTimestsamp(t)
+  const output = pulse !== null ?
+    (await findPulse(pulse)).output : new Uint8Array(4096)
+  return { pulse, output }
+}
+
 const findOrCreatePulse = async (t) => {
   let pulseRecord = await db.getPulse(t)
   if (pulseRecord.output === null) {
@@ -128,6 +142,11 @@ const findOrCreatePulse = async (t) => {
       .map((o) => digestedBlocks[o.digest])
     const output = parallelOracle(4096, vrfOutput, sourceBlocks)
 
+    // Previous pulse
+    const prevOutput = (await getPreviousPulse(t)).output
+    for (let i = 0; i < output.length; i++) output[i] ^= prevOutput[i]
+
+    // Save
     const pulseDetails = {
       sources: sourceDetails,
       vrf_pk: vrfPublicKey.toHex(),
@@ -145,7 +164,7 @@ const findOrCreatePulse = async (t) => {
 const getLatestPulse = async () => {
   const t = await db.getLatestPulseTimestsamp()
   // Return null if no pulse has been constructed. This does not happen in normal operation
-  return t !== null ? await findOrCreatePulse(t) : null
+  return t !== null ? await findPulse(t) : null
 }
 
 const printPulse = (pulseRecord) => {
@@ -181,7 +200,7 @@ Deno.test('findOrCreatePulse', async () => {
 })
 
 ;(async () => {
-  // await findOrCreatePulse(beaconPulseTimestamp(-9))
+  await findOrCreatePulse(beaconPulseTimestamp(-9))
 })()
 
 // ============ Web server ============ //
@@ -405,9 +424,14 @@ const serveReq = async (req, info) => {
       (o) => ({ url: o.url, extension: detectExt(o.url), digest: o.digest }))
 
     // - Previous
-    args.currentCombinedPrefixSuffix = prefixSuffix(pulseRecord.output.toHex())
-    args.previousTimestamp = 1
-    args.previousOutputPrefixSuffix = prefixSuffix(pulseRecord.output.toHex())
+    const prevPulse = await getPreviousPulse(pulseRecord.pulse)
+    args.previousTimestamp = prevPulse.pulse || 0
+    args.previousOutputPrefixSuffix = prefixSuffix(prevPulse.output.toHex())
+
+    const curCombinedHash = new Uint8Array(pulseRecord.output.length)
+    for (let i = 0; i < curCombinedHash.length; i++)
+      curCombinedHash[i] = pulseRecord.output[i] ^ prevPulse.output[i]
+    args.currentCombinedPrefixSuffix = prefixSuffix(curCombinedHash.toHex())
 
     // Render the page
     const templateFrame = await Deno.readTextFile('page/frame.html')

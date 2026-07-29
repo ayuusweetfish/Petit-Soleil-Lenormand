@@ -108,6 +108,10 @@ export const getLatestPulseTimestsamp = async () => {
   const result = await db.run(`SELECT MAX(pulse) AS pulse FROM pulses`)
   return result[0]['pulse'] || null
 }
+export const getPreviousPulseTimestsamp = async (before) => {
+  const result = await db.run(`SELECT MAX(pulse) AS pulse FROM pulses WHERE pulse < ?`, before)
+  return result[0]['pulse'] || null
+}
 
 Deno.test('Application database operations', async () => {
   for (let i = 10000000; i <= 10036000; i += 3600) {
