@@ -386,10 +386,10 @@ const serveReq = async (req, info) => {
     const pulseRecord = await getLatestPulse()
 
     // - Base, output
+    const dateStrISO = (t) =>
+      (new Date(t)).toISOString().replace('T', ' ').replace(':00.000Z', ' UTC')
     args.latestTimestamp = pulseRecord.pulse
-    args.latestTimestampISO =
-      (new Date(pulseRecord.pulse)).toISOString()
-        .replace('T', ' ').replace(':00.000Z', ' UTC')
+    args.latestTimestampISO = dateStrISO(pulseRecord.pulse)
 
     const prefixSuffix = (s) => {
       if (s instanceof Uint8Array) s = encodeHex(s)
@@ -426,6 +426,7 @@ const serveReq = async (req, info) => {
     // - Previous
     const prevPulse = await getPreviousPulse(pulseRecord.pulse)
     args.previousTimestamp = prevPulse.pulse || 0
+    args.previousTimestampISO = dateStrISO(prevPulse.pulse || 0)
     args.previousOutputPrefixSuffix = prefixSuffix(prevPulse.output.toHex())
 
     const curCombinedHash = new Uint8Array(pulseRecord.output.length)
