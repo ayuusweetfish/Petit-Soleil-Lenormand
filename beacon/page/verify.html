@@ -8,7 +8,7 @@
 <p><strong>1.</strong> Download the images involved.</p>
 <p><tt class='code'>
   <span class='command'>curl{{~a' details
-    &nbsp;\<br>&nbsp;&nbsp;{{ message }} -o {{ index }}.{{ extension }}
+    &nbsp;\<br>&nbsp;&nbsp;'{{ url }}' -o {{ index }}.{{ extension }}
   a'~}}</span><br>
 </tt></p>
 
@@ -24,22 +24,20 @@
   b3'~}}</span>
 </tt></p>
 
-<p><strong>3.</strong> Calculate the 4096-byte hash from the files.</p>
+<p><strong>3.</strong> Retrieve and verify local randomness.</p>
 <p><tt class='code'>
-  <span class='command'>curl https://abrc.ayu.land/hash.c -o hash.c</span><br>
-  <span class='command'>cc -O2 hash.c -o hash</span><br>
-  <span class='command'>HASH=$(./hash{{~c' details &nbsp;{{ index }}.{{ extension }} c'~}}); echo ${HASH::16}...${HASH:(-16)}</span><br>
-  <span class='command-output'>{{ contentHashPrefixSuffix }}</span><br>
+  <span class='command'>VRF_PK={{ vrfPk }}</span><br>
+  <span class='command'>VRF_PROOF={{ vrfProof }}</span><br>
+  <span class='command'>LOCAL=$(./vrf-verify $VRF_PK {{ latestTimestamp }} $VRF_PROOF)</span><br>
+  <span class='command'>echo ${LOCAL::16}...${LOCAL:(-16)}</span><br>
+  <span class='command-output'>{{ vrfOutputPrefixSuffix }}</span><br>
 </tt></p>
 
-<p><strong>4.</strong> Verify that local randomness matches the precommitment digest in the previous pulse.</p>
+<p><strong>4.</strong> Calculate combined hash of all files.</o>
 <p><tt class='code'>
-  <span class='command'>PRECM=$(curl https://abrc.ayu.land/{{ previousTimestamp }} | perl -ne 'm/"precommit":"([0-9a-f]+)"/; print "$1"'); echo ${PRECM:0:16}...${PRECM:(-16)}</span><br>
-  <span class='command-output'>{{ precommitment }}</span><br>
-  <span class='command'>LOCAL=$(curl https://abrc.ayu.land/{{ latestTimestamp }} | perl -ne 'm/"local":"([0-9a-f]+)"/; print "$1"'); echo ${LOCAL:0:16}...${LOCAL:(-16)}</span><br>
-  <span class='command-output'>{{ localRandomnessPrefixSuffix }}</span><br>
-  <span class='command'>xxd -r -p &lt;&lt;&lt; $LOCAL | openssl dgst -sha3-512</span><br>
-  <span class='command-output'>{{ precommitment }}</span><br>
+  <span class='command'>HASH=$(i=0; while [ $i -lt 64 ]; do echo $LOCAL | LC_ALL=C awk '{ for (i = 0; i &lt; 256; i++) { hex[sprintf("%02x", i)] = i; } for (i = 1; i &lt;= length($0); i += 2) { printf("%c", (hex[substr($0, i, 2)] + (i == 1 ? '"$i"' : 0)) % 256) } }' | cat -{{~c' details &nbsp;{{ index }}.{{ extension }} c'~}} | openssl dgst -sha3-512 | awk '{ printf "%s", $2 }'; i=$((i + 1)); done)</span><br>
+  <span class='command'>echo ${HASH::16}...${HASH:(-16)}</span><br>
+  <span class='command-output'>{{ currentCombinedPrefixSuffix }}</span><br>
 </tt></p>
 
 <p><strong>5.</strong> Retrieve the previous output.</p>

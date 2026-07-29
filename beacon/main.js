@@ -181,7 +181,7 @@ Deno.test('findOrCreatePulse', async () => {
 })
 
 ;(async () => {
-  await findOrCreatePulse(beaconPulseTimestamp(-9))
+  // await findOrCreatePulse(beaconPulseTimestamp(-9))
 })()
 
 // ============ Web server ============ //
@@ -365,6 +365,8 @@ const serveReq = async (req, info) => {
 
     // Fill template arguments
     const pulseRecord = await getLatestPulse()
+
+    // - Base, output
     lookup.latestTimestamp = pulseRecord.pulse
     lookup.latestTimestampISO =
       (new Date(pulseRecord.pulse)).toISOString()
@@ -388,6 +390,24 @@ const serveReq = async (req, info) => {
       n += pulseRecord.output[i]
     const char = emojis[n % emojis.length]
     lookup.randomEmoji = ` + <img class='emoji-icon' alt='${char}' src='/emoji/${char.codePointAt(0).toString(16)}.svg'>`
+
+    // - VRF
+    lookup.vrfPk = pulseRecord.details.vrf_pk
+    lookup.vrfProof = pulseRecord.details.vrf_proof
+    const [, vrfOutput] = ecvrf.ecvrf_proof_to_hash(Buffer.fromHex(pulseRecord.details.vrf_proof))
+    lookup.vrfOutputPrefixSuffix = prefixSuffix(vrfOutput.toHex())
+
+    // - Images
+    // XXX: This is primitive. May need adaptation if sources are extended
+    const detectExt = (url) =>
+      url.toLowerCase().endsWith('.png') ? 'png' : 'jpg'
+    lookup.details = Object.values(pulseRecord.details.sources).map(
+      (o) => ({ url: o.url, extension: detectExt(o.url), digest: o.digest }))
+
+    // - Previous
+    lookup.currentCombinedPrefixSuffix = prefixSuffix(pulseRecord.output.toHex())
+    lookup.previousTimestamp = 1
+    lookup.previousOutputPrefixSuffix = prefixSuffix(pulseRecord.output.toHex())
 
     // Render the page
     const templateFrame = await Deno.readTextFile('page/frame.html')
