@@ -104,6 +104,10 @@ export const setBeaconOutput = async (pulse, details, output) => {
       SET details = excluded.details, output = excluded.output
   `, pulse, JSON.stringify(details), output)
 }
+export const getLatestPulseTimestsamp = async () => {
+  const result = await db.run(`SELECT MAX(pulse) AS pulse FROM pulses`)
+  return result[0]['pulse'] || null
+}
 
 Deno.test('Application database operations', async () => {
   for (let i = 10000000; i <= 10036000; i += 3600) {

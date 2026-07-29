@@ -142,6 +142,12 @@ const findOrCreatePulse = async (t) => {
   return pulseRecord
 }
 
+const getLatestPulse = async () => {
+  const t = await db.getLatestPulseTimestsamp()
+  // Return null if no pulse has been constructed. This does not happen in normal operation
+  return t !== null ? await findOrCreatePulse(t) : null
+}
+
 const printPulse = (pulseRecord) => {
   const { pulse, details, output } = pulseRecord
   console.log(pulse)
@@ -358,7 +364,7 @@ const serveReq = async (req, info) => {
     const lookup = {}
 
     // Fill template arguments
-    const pulseRecord = await findOrCreatePulse(beaconPulseTimestamp(-9))
+    const pulseRecord = await getLatestPulse()
     lookup.latestTimestamp = pulseRecord.pulse
     lookup.latestTimestampISO =
       (new Date(pulseRecord.pulse)).toISOString()
