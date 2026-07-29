@@ -98,9 +98,8 @@ const fetchSources = async (timestamp, records) => {
   return records
 }
 
-const t0 = beaconPulseTimestamp(0)
-
 if (0) Deno.test('fetchSources', async () => {
+  const t0 = beaconPulseTimestamp(0)
   const t = beaconPulseTimestamp(-9, t0)
   console.log(t)
   const c = await fetchSources(t)
@@ -170,9 +169,14 @@ i=0; while [ $i -lt 64 ]; do echo $LOCAL | LC_ALL=C awk '{ for (i = 0; i < 256; 
 }
 
 Deno.test('findOrCreatePulse', async () => {
+  const t0 = beaconPulseTimestamp(0)
   const pulseRecord = await findOrCreatePulse(beaconPulseTimestamp(-9, t0))
   printPulse(pulseRecord)
 })
+
+;(async () => {
+  await findOrCreatePulse(beaconPulseTimestamp(-9))
+})()
 
 // ============ Web server ============ //
 
@@ -353,6 +357,33 @@ const serveReq = async (req, info) => {
 
     const lookup = {}
 
+    // Fill template arguments
+    const pulseRecord = await findOrCreatePulse(beaconPulseTimestamp(-9))
+    lookup.latestTimestamp = pulseRecord.pulse
+    lookup.latestTimestampISO =
+      (new Date(pulseRecord.pulse)).toISOString()
+        .replace('T', ' ').replace(':00.000Z', ' UTC')
+
+    const prefixSuffix = (s) => {
+      if (s instanceof Uint8Array) s = encodeHex(s)
+      return (s.substring(0, 16) + '...' + s.substring(s.length - 16))
+    }
+    lookup.latestOutputPrefixSuffix = prefixSuffix(pulseRecord.output.toHex())
+
+    const emojis = Array.from(
+      '🍇🍈🍉🍊🍋🍌🍍🥭🍎🍏🍐🍑🍒🍓🫐🥝🍅🫒🥥🥑🍆🥔🥕🌽🌶🫑🥒🥬🥦🧄🧅🥜🫘🌰🫚🫛🍦🍧🍨🍩🍪🎂🍰🧁🥧🍫🍬🍭🍮🍯' +
+      '⭐🌟🌠🌌🦄💐🌸💮🪷🏵️🌹🌺🌻🌼🌷🪻🌱🪴🌲🌳🌴🌵🌾🌿☘️🍀🍁🍃🍄🪨🪵🌊' +
+      '🎃🎆🎇🧨✨🎈🎉🎊🎐🎑🏮💖💟❣❤🩷🧡💛💚💙🩵💜🤎🖤🩶🤍🎵🎶🎹🥁🔮🪁🪄🎨🌈🫧💡🕯️🎀'
+    ).filter((c) => c.codePointAt(0) !== 0xfe0f)
+    // console.log(emojis.map((c) => c.codePointAt(0).toString(16)).sort().join('\n'))
+    const minutes = Math.floor((Date.now() - pulseRecord.pulse) / 60000 - 9 * 60);
+    let n = 0
+    for (let i = minutes; i < pulseRecord.output.length; i += 120)
+      n += pulseRecord.output[i]
+    const char = emojis[n % emojis.length]
+    lookup.randomEmoji = ` + <img class='emoji-icon' alt='${char}' src='/emoji/${char.codePointAt(0).toString(16)}.svg'>`
+
+    // Render the page
     const templateFrame = await Deno.readTextFile('page/frame.html')
     const templateContent = await Deno.readTextFile(`page/${pageName}.html`)
     let content = renderTemplate(templateContent, lookup, lang)
