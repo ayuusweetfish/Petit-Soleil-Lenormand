@@ -188,18 +188,18 @@ Deno.test('findOrCreatePulse', async () => {
 
 const log = (msg) => console.log(`${(new Date()).toISOString()} ${msg}`)
 
-const renderTemplate = (s, lookup, lang, extra) => {
+const renderTemplate = (s, args, lang, extra) => {
   extra = extra || {}
   extra.lang = (lang === 'zh' ? 'zh-Hans' : lang)
   return s.replaceAll(/^{{\s*@([a-zA-Z-]+)\s*}}(.+\n)/gm, (_, capturedLang, content) => {
     return (capturedLang === lang ? content : '')
   }).replaceAll(/{{~(.*)\s*([0-9A-Za-z_]+)\s*([^]*\S)\s*\1~(?:}}|-}}\s*)/gm, (_, _delim, key, w) => {
-    const list = lookup[key] || []
+    const list = args[key] || []
     return list.map((entry, index) =>
       renderTemplate(w, entry, lang, { index: (index + 1).toString().padStart(2, '0') })
     ).join('')
   }).replaceAll(/{{\s*([0-9A-Za-z_]+)\s*}}/g, (_, w) => {
-    return lookup[w] !== undefined ? lookup[w].toString() :
+    return args[w] !== undefined ? args[w].toString() :
            extra[w] !== undefined ? extra[w].toString() : ''
   })
 }
@@ -361,14 +361,14 @@ const serveReq = async (req, info) => {
     if (!selLang) selLang = req.headers.get('Accept-Language')
     const lang = negotiateLang(selLang || '', ['en', 'zh'])
 
-    const lookup = {}
+    const args = {}
 
     // Fill template arguments
     const pulseRecord = await getLatestPulse()
 
     // - Base, output
-    lookup.latestTimestamp = pulseRecord.pulse
-    lookup.latestTimestampISO =
+    args.latestTimestamp = pulseRecord.pulse
+    args.latestTimestampISO =
       (new Date(pulseRecord.pulse)).toISOString()
         .replace('T', ' ').replace(':00.000Z', ' UTC')
 
@@ -376,7 +376,7 @@ const serveReq = async (req, info) => {
       if (s instanceof Uint8Array) s = encodeHex(s)
       return (s.substring(0, 16) + '...' + s.substring(s.length - 16))
     }
-    lookup.latestOutputPrefixSuffix = prefixSuffix(pulseRecord.output.toHex())
+    args.latestOutputPrefixSuffix = prefixSuffix(pulseRecord.output.toHex())
 
     const emojis = Array.from(
       '🍇🍈🍉🍊🍋🍌🍍🥭🍎🍏🍐🍑🍒🍓🫐🥝🍅🫒🥥🥑🍆🥔🥕🌽🌶🫑🥒🥬🥦🧄🧅🥜🫘🌰🫚🫛🍦🍧🍨🍩🍪🎂🍰🧁🥧🍫🍬🍭🍮🍯' +
@@ -389,38 +389,38 @@ const serveReq = async (req, info) => {
     for (let i = minutes; i < pulseRecord.output.length; i += 120)
       n += pulseRecord.output[i]
     const char = emojis[n % emojis.length]
-    lookup.randomEmoji = ` + <img class='emoji-icon' alt='${char}' src='/emoji/${char.codePointAt(0).toString(16)}.svg'>`
+    args.randomEmoji = ` + <img class='emoji-icon' alt='${char}' src='/emoji/${char.codePointAt(0).toString(16)}.svg'>`
 
     // - VRF
-    lookup.vrfPk = pulseRecord.details.vrf_pk
-    lookup.vrfProof = pulseRecord.details.vrf_proof
+    args.vrfPk = pulseRecord.details.vrf_pk
+    args.vrfProof = pulseRecord.details.vrf_proof
     const [, vrfOutput] = ecvrf.ecvrf_proof_to_hash(Buffer.fromHex(pulseRecord.details.vrf_proof))
-    lookup.vrfOutputPrefixSuffix = prefixSuffix(vrfOutput.toHex())
+    args.vrfOutputPrefixSuffix = prefixSuffix(vrfOutput.toHex())
 
     // - Images
     // XXX: This is primitive. May need adaptation if sources are extended
     const detectExt = (url) =>
       url.toLowerCase().endsWith('.png') ? 'png' : 'jpg'
-    lookup.details = Object.values(pulseRecord.details.sources).map(
+    args.details = Object.values(pulseRecord.details.sources).map(
       (o) => ({ url: o.url, extension: detectExt(o.url), digest: o.digest }))
 
     // - Previous
-    lookup.currentCombinedPrefixSuffix = prefixSuffix(pulseRecord.output.toHex())
-    lookup.previousTimestamp = 1
-    lookup.previousOutputPrefixSuffix = prefixSuffix(pulseRecord.output.toHex())
+    args.currentCombinedPrefixSuffix = prefixSuffix(pulseRecord.output.toHex())
+    args.previousTimestamp = 1
+    args.previousOutputPrefixSuffix = prefixSuffix(pulseRecord.output.toHex())
 
     // Render the page
     const templateFrame = await Deno.readTextFile('page/frame.html')
     const templateContent = await Deno.readTextFile(`page/${pageName}.html`)
-    let content = renderTemplate(templateContent, lookup, lang)
+    let content = renderTemplate(templateContent, args, lang)
     let title
     content = content.replace(/^<title>(.+)<\/title>\n/, (_, matchedTitle) => {
       title = matchedTitle
       return ''
     })
     title = (title ? (title + ' — ') : '')
-    Object.assign(lookup, { title, content })
-    const page = renderTemplate(templateFrame, lookup, lang)
+    Object.assign(args, { title, content })
+    const page = renderTemplate(templateFrame, args, lang)
     const headers = {
       'Content-Type': 'text/html; encoding=utf-8',
     }
